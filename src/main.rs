@@ -10,7 +10,7 @@ use {
   ratatui::{
     Frame, Terminal,
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
@@ -28,8 +28,7 @@ const TOP_STORIES_URL: &str =
   "https://hacker-news.firebaseio.com/v0/topstories.json";
 const ITEM_URL: &str = "https://hacker-news.firebaseio.com/v0/item";
 const STORY_LIMIT: usize = 30;
-const DEFAULT_MESSAGE: &str =
-  "Use Up/Down or j/k to navigate • Enter to open • q to quit";
+const DEFAULT_MESSAGE: &str = "Enter opens the story | q quits";
 
 type AppResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
@@ -151,36 +150,48 @@ fn run(
 }
 
 fn draw(frame: &mut Frame, stories: &[Story], selected: usize, message: &str) {
-  let chunks = Layout::default()
+  let layout = Layout::default()
     .direction(Direction::Vertical)
     .margin(1)
-    .constraints([Constraint::Length(3), Constraint::Min(0)])
+    .constraints([
+      Constraint::Length(3),
+      Constraint::Min(0),
+      Constraint::Length(1),
+    ])
     .split(frame.area());
 
-  let controls = Paragraph::new(message)
-    .block(Block::default().borders(Borders::ALL).title("Controls"));
+  let header = Paragraph::new(Line::from(vec![
+    Span::styled(
+      "hn",
+      Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::BOLD),
+    ),
+    Span::raw(format!(" | {} stories", stories.len())),
+    Span::raw(" | arrows or j/k to browse"),
+  ]))
+  .alignment(Alignment::Left);
 
-  frame.render_widget(controls, chunks[0]);
+  frame.render_widget(header, layout[0]);
 
   let items: Vec<ListItem> = if stories.is_empty() {
     vec![ListItem::new(Line::from("No stories available."))]
   } else {
     stories
       .iter()
-      .map(|story| {
-        let mut lines = vec![Line::from(story.title.clone())];
-
-        if let Some(url) = &story.url {
-          lines.push(Line::from(Span::styled(
-            url.clone(),
-            Style::default().fg(Color::DarkGray),
-          )));
-        }
+      .enumerate()
+      .map(|(idx, story)| {
+        let rank = format!("{:>2}", idx + 1);
+        let mut lines = vec![Line::from(vec![
+          Span::styled(rank, Style::default().fg(Color::DarkGray)),
+          Span::raw(" "),
+          Span::styled(story.title.clone(), Style::default().fg(Color::White)),
+        ])];
 
         if let (Some(score), Some(by)) = (story.score, story.by.as_deref()) {
           lines.push(Line::from(Span::styled(
             format!("{score} points by {by}"),
-            Style::default().fg(Color::Gray),
+            Style::default().fg(Color::DarkGray),
           )));
         }
         ListItem::new(lines)
@@ -194,21 +205,19 @@ fn draw(frame: &mut Frame, stories: &[Story], selected: usize, message: &str) {
     state.select(Some(selected.min(stories.len() - 1)));
   }
 
-  let list = List::new(items)
-    .block(
-      Block::default()
-        .borders(Borders::ALL)
-        .title(format!("Top Stories ({})", stories.len())),
-    )
-    .highlight_style(
-      Style::default()
-        .fg(Color::Black)
-        .bg(Color::Cyan)
-        .add_modifier(Modifier::BOLD),
-    )
-    .highlight_symbol("> ");
+  let list = List::new(items).highlight_style(
+    Style::default()
+      .fg(Color::Cyan)
+      .add_modifier(Modifier::BOLD),
+  );
 
-  frame.render_stateful_widget(list, chunks[1], &mut state);
+  frame.render_stateful_widget(list, layout[1], &mut state);
+
+  let status = Paragraph::new(message)
+    .style(Style::default().fg(Color::DarkGray))
+    .block(Block::default().borders(Borders::TOP));
+
+  frame.render_widget(status, layout[2]);
 }
 
 fn open_story(story: &Story) -> Result<String, String> {
