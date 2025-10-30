@@ -21,18 +21,21 @@ use {
     io::{self, Stdout},
     time::Duration,
   },
+  webbrowser,
 };
 
 const TOP_STORIES_URL: &str =
   "https://hacker-news.firebaseio.com/v0/topstories.json";
-
 const ITEM_URL: &str = "https://hacker-news.firebaseio.com/v0/item";
 const STORY_LIMIT: usize = 30;
+const DEFAULT_MESSAGE: &str =
+  "Use Up/Down or j/k to navigate • Enter to open • q to quit";
 
 type AppResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[derive(Debug, Deserialize, Clone)]
 struct Story {
+  id: u64,
   title: String,
   url: Option<String>,
   by: Option<String>,
@@ -91,10 +94,11 @@ fn run(
   stories: Vec<Story>,
 ) -> AppResult<()> {
   let mut selected = 0usize;
+  let mut message = DEFAULT_MESSAGE.to_string();
 
   loop {
     terminal.draw(|frame| {
-      draw(frame, &stories, selected);
+      draw(frame, &stories, selected, &message);
     })?;
 
     if event::poll(Duration::from_millis(200))? {
@@ -105,18 +109,34 @@ fn run(
             if !stories.is_empty() && selected + 1 < stories.len() {
               selected += 1;
             }
+            message = DEFAULT_MESSAGE.to_string();
           }
           KeyCode::Up | KeyCode::Char('k') => {
             if selected > 0 {
               selected -= 1;
             }
+            message = DEFAULT_MESSAGE.to_string();
           }
           KeyCode::Home => {
             selected = 0;
+            message = DEFAULT_MESSAGE.to_string();
           }
           KeyCode::End => {
             if !stories.is_empty() {
               selected = stories.len() - 1;
+            }
+            message = DEFAULT_MESSAGE.to_string();
+          }
+          KeyCode::Enter => {
+            if let Some(story) = stories.get(selected) {
+              match open_story(story) {
+                Ok(link) => {
+                  message = format!("Opened in browser: {link}");
+                }
+                Err(err) => {
+                  message = format!("Could not open story: {err}");
+                }
+              }
             }
           }
           _ => {}
@@ -130,14 +150,14 @@ fn run(
   Ok(())
 }
 
-fn draw(frame: &mut Frame, stories: &[Story], selected: usize) {
+fn draw(frame: &mut Frame, stories: &[Story], selected: usize, message: &str) {
   let chunks = Layout::default()
     .direction(Direction::Vertical)
     .margin(1)
     .constraints([Constraint::Length(3), Constraint::Min(0)])
     .split(frame.area());
 
-  let controls = Paragraph::new("Use Up/Down or j/k to navigate | q to quit")
+  let controls = Paragraph::new(message)
     .block(Block::default().borders(Borders::ALL).title("Controls"));
 
   frame.render_widget(controls, chunks[0]);
@@ -189,6 +209,20 @@ fn draw(frame: &mut Frame, stories: &[Story], selected: usize) {
     .highlight_symbol("> ");
 
   frame.render_stateful_widget(list, chunks[1], &mut state);
+}
+
+fn open_story(story: &Story) -> Result<String, String> {
+  let link = story
+    .url
+    .clone()
+    .filter(|url| !url.is_empty())
+    .unwrap_or_else(|| {
+      format!("https://news.ycombinator.com/item?id={}", story.id)
+    });
+
+  webbrowser::open(&link)
+    .map(|_| link.clone())
+    .map_err(|error| error.to_string())
 }
 
 #[tokio::main]
