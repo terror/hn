@@ -1,4 +1,5 @@
 use {
+  category::{Category, CategoryKind},
   crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
     execute,
@@ -29,6 +30,8 @@ use {
   webbrowser,
 };
 
+mod category;
+
 const API_BASE_URL: &str = "https://hacker-news.firebaseio.com/v0";
 
 const COMMENTS_URL: &str =
@@ -42,49 +45,6 @@ const DEFAULT_MESSAGE: &str =
   "Left/Right tabs | Up/Down browse | Enter opens | q quits";
 
 type AppResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
-
-#[derive(Clone, Copy)]
-struct Category {
-  label: &'static str,
-  kind: CategoryKind,
-}
-
-#[derive(Clone, Copy)]
-enum CategoryKind {
-  Stories(&'static str),
-  Comments,
-}
-
-impl Category {
-  fn all() -> &'static [Category] {
-    &[
-      Category {
-        label: "new",
-        kind: CategoryKind::Stories("newstories"),
-      },
-      Category {
-        label: "past",
-        kind: CategoryKind::Stories("topstories"),
-      },
-      Category {
-        label: "comments",
-        kind: CategoryKind::Comments,
-      },
-      Category {
-        label: "ask",
-        kind: CategoryKind::Stories("askstories"),
-      },
-      Category {
-        label: "show",
-        kind: CategoryKind::Stories("showstories"),
-      },
-      Category {
-        label: "jobs",
-        kind: CategoryKind::Stories("jobstories"),
-      },
-    ]
-  }
-}
 
 #[derive(Debug, Deserialize)]
 struct Story {
