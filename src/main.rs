@@ -42,7 +42,7 @@ const ITEM_URL: &str = "https://hacker-news.firebaseio.com/v0/item";
 const STORY_LIMIT: usize = 30;
 
 const DEFAULT_MESSAGE: &str =
-  "Left/Right tabs | Up/Down browse | Enter opens | q quits";
+  "↑/k up • ↓/j down • enter open • q/esc quit • ? more";
 
 type AppResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
@@ -93,10 +93,7 @@ struct App {
 
 impl App {
   fn new(tabs: Vec<TabData>) -> Self {
-    let message = tabs
-      .get(0)
-      .map(default_message_for)
-      .unwrap_or_else(|| DEFAULT_MESSAGE.to_string());
+    let message = DEFAULT_MESSAGE.to_string();
 
     Self {
       tabs,
@@ -106,11 +103,7 @@ impl App {
   }
 
   fn refresh_hint(&mut self) {
-    if let Some(tab) = self.tabs.get(self.active_tab) {
-      self.message = default_message_for(tab);
-    } else {
-      self.message = DEFAULT_MESSAGE.to_string();
-    }
+    self.message = DEFAULT_MESSAGE.to_string();
   }
 }
 
@@ -538,14 +531,6 @@ fn truncate(text: &str, max_chars: usize) -> String {
     }
     out
   }
-}
-
-fn default_message_for(tab: &TabData) -> String {
-  format!(
-    "{} tab | {} items | Left/Right tabs | Up/Down browse | Enter opens | q quits",
-    tab.label.to_uppercase(),
-    tab.items.len()
-  )
 }
 
 fn format_points(score: u64) -> String {
