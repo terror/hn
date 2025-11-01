@@ -1,6 +1,7 @@
 mod category;
 mod client;
 mod entry;
+mod story;
 mod utils;
 
 use {
@@ -36,19 +37,11 @@ use {
     io::{self, Stdout},
     time::Duration,
   },
+  story::Story,
   utils::{deserialize_optional_string, open_entry, truncate},
 };
 
 const STORY_LIMIT: usize = 30;
-
-#[derive(Debug, Deserialize)]
-struct Story {
-  by: Option<String>,
-  id: u64,
-  score: Option<u64>,
-  title: String,
-  url: Option<String>,
-}
 
 #[derive(Debug, Deserialize)]
 struct CommentResponse {

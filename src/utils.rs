@@ -115,6 +115,12 @@ pub(crate) fn format_points(score: u64) -> String {
 mod tests {
   use {super::*, serde::Deserialize};
 
+  #[derive(Deserialize, Debug, PartialEq)]
+  struct OptionalWrapper {
+    #[serde(deserialize_with = "deserialize_optional_string")]
+    value: Option<String>,
+  }
+
   #[test]
   fn truncate_returns_original_when_within_limit() {
     assert_eq!(truncate("short", 10), "short");
@@ -153,12 +159,6 @@ mod tests {
     assert_eq!(format_points(1), "1 point");
     assert_eq!(format_points(2), "2 points");
     assert_eq!(format_points(0), "0 points");
-  }
-
-  #[derive(Deserialize, Debug, PartialEq)]
-  struct OptionalWrapper {
-    #[serde(deserialize_with = "deserialize_optional_string")]
-    value: Option<String>,
   }
 
   fn parse_value(input: &str) -> Result<Option<String>, serde_json::Error> {
