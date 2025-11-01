@@ -254,6 +254,8 @@ fn draw(frame: &mut Frame, app: &App) {
           ]));
         }
 
+        lines.push(Line::from(Span::raw(indent.clone())));
+
         ListItem::new(lines)
       })
       .collect()
