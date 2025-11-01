@@ -1,4 +1,9 @@
+mod category;
+mod client;
+mod entry;
+
 use {
+  anyhow::anyhow,
   category::{Category, CategoryKind},
   client::Client,
   crossterm::{
@@ -9,6 +14,7 @@ use {
       enable_raw_mode,
     },
   },
+  entry::Entry,
   futures::{
     future::join_all,
     stream::{self, StreamExt},
@@ -28,18 +34,7 @@ use {
     io::{self, Stdout},
     time::Duration,
   },
-  webbrowser,
 };
-
-mod category;
-mod client;
-
-const API_BASE_URL: &str = "https://hacker-news.firebaseio.com/v0";
-
-const COMMENTS_URL: &str =
-  "https://hn.algolia.com/api/v1/search_by_date?tags=comment&hitsPerPage=";
-
-const ITEM_URL: &str = "https://hacker-news.firebaseio.com/v0/item";
 
 const STORY_LIMIT: usize = 30;
 
@@ -48,11 +43,11 @@ const DEFAULT_MESSAGE: &str =
 
 #[derive(Debug, Deserialize)]
 struct Story {
+  by: Option<String>,
   id: u64,
+  score: Option<u64>,
   title: String,
   url: Option<String>,
-  by: Option<String>,
-  score: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,52 +57,43 @@ struct CommentResponse {
 
 #[derive(Debug, Deserialize)]
 struct CommentHit {
-  #[serde(rename = "objectID")]
-  object_id: String,
   author: Option<String>,
   comment_text: Option<String>,
-  story_title: Option<String>,
+  #[serde(rename = "objectID")]
+  object_id: String,
   #[serde(deserialize_with = "deserialize_optional_string")]
   story_id: Option<String>,
+  story_title: Option<String>,
   story_url: Option<String>,
 }
 
-struct Entry {
-  id: String,
-  title: String,
-  detail: Option<String>,
-  url: Option<String>,
-}
-
 struct TabData {
-  label: &'static str,
   items: Vec<Entry>,
+  label: &'static str,
   selected: usize,
 }
 
 struct App {
-  tabs: Vec<TabData>,
   active_tab: usize,
   message: String,
+  tabs: Vec<TabData>,
 }
+
+type Result<T = (), E = anyhow::Error> = std::result::Result<T, E>;
 
 impl App {
   fn new(tabs: Vec<TabData>) -> Self {
     let message = DEFAULT_MESSAGE.to_string();
 
     Self {
-      tabs,
       active_tab: 0,
       message,
+      tabs,
     }
-  }
-
-  fn refresh_hint(&mut self) {
-    self.message = DEFAULT_MESSAGE.to_string();
   }
 }
 
-fn init_terminal() -> AppResult<Terminal<CrosstermBackend<Stdout>>> {
+fn init_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
   enable_raw_mode()?;
 
   let mut stdout = io::stdout();
@@ -118,7 +104,7 @@ fn init_terminal() -> AppResult<Terminal<CrosstermBackend<Stdout>>> {
 
 fn restore_terminal(
   terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-) -> io::Result<()> {
+) -> Result {
   disable_raw_mode()?;
 
   execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
@@ -131,75 +117,69 @@ fn restore_terminal(
 fn run(
   terminal: &mut Terminal<CrosstermBackend<Stdout>>,
   mut app: App,
-) -> AppResult<()> {
+) -> Result {
   loop {
     terminal.draw(|frame| draw(frame, &app))?;
 
     if event::poll(Duration::from_millis(200))? {
       match event::read()? {
         Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
-          KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => break,
+          KeyCode::Char('q' | 'Q') | KeyCode::Esc => break,
           KeyCode::Left | KeyCode::Char('h') => {
             if !app.tabs.is_empty() {
               app.active_tab =
                 (app.active_tab + app.tabs.len() - 1) % app.tabs.len();
-              app.refresh_hint();
             }
           }
           KeyCode::Right | KeyCode::Char('l') => {
             if !app.tabs.is_empty() {
               app.active_tab = (app.active_tab + 1) % app.tabs.len();
-              app.refresh_hint();
             }
           }
           KeyCode::Down | KeyCode::Char('j') => {
-            if let Some(tab) = app.tabs.get_mut(app.active_tab) {
-              if !tab.items.is_empty() && tab.selected + 1 < tab.items.len() {
-                tab.selected += 1;
-              }
+            if let Some(tab) = app.tabs.get_mut(app.active_tab)
+              && !tab.items.is_empty()
+              && tab.selected + 1 < tab.items.len()
+            {
+              tab.selected += 1;
             }
-            app.refresh_hint();
           }
           KeyCode::Up | KeyCode::Char('k') => {
-            if let Some(tab) = app.tabs.get_mut(app.active_tab) {
-              if tab.selected > 0 {
-                tab.selected -= 1;
-              }
+            if let Some(tab) = app.tabs.get_mut(app.active_tab)
+              && tab.selected > 0
+            {
+              tab.selected -= 1;
             }
-            app.refresh_hint();
           }
           KeyCode::Home => {
             if let Some(tab) = app.tabs.get_mut(app.active_tab) {
               tab.selected = 0;
             }
-            app.refresh_hint();
           }
           KeyCode::End => {
-            if let Some(tab) = app.tabs.get_mut(app.active_tab) {
-              if !tab.items.is_empty() {
-                tab.selected = tab.items.len() - 1;
-              }
+            if let Some(tab) = app.tabs.get_mut(app.active_tab)
+              && !tab.items.is_empty()
+            {
+              tab.selected = tab.items.len() - 1;
             }
-            app.refresh_hint();
           }
           KeyCode::Enter => {
-            if let Some(tab) = app.tabs.get(app.active_tab) {
-              if let Some(entry) = tab.items.get(tab.selected) {
-                match open_entry(entry) {
-                  Ok(link) => {
-                    app.message =
-                      format!("Opened in browser: {}", truncate(&link, 80));
-                  }
-                  Err(err) => {
-                    app.message = format!("Could not open selection: {err}");
-                  }
+            if let Some(tab) = app.tabs.get(app.active_tab)
+              && let Some(entry) = tab.items.get(tab.selected)
+            {
+              match open_entry(entry) {
+                Ok(link) => {
+                  app.message =
+                    format!("Opened in browser: {}", truncate(&link, 80));
+                }
+                Err(err) => {
+                  app.message = format!("Could not open selection: {err}");
                 }
               }
             }
           }
           _ => {}
         },
-        Event::Resize(_, _) => {}
         _ => {}
       }
     }
@@ -263,6 +243,7 @@ fn draw(frame: &mut Frame, app: &App) {
         } else {
           "  "
         };
+
         let pointer_blank = " ".repeat(pointer.chars().count());
         let indent = pointer_blank.clone();
 
@@ -315,58 +296,8 @@ fn open_entry(entry: &Entry) -> Result<String, String> {
     });
 
   webbrowser::open(&link)
-    .map(|_| link.clone())
+    .map(|()| link.clone())
     .map_err(|error| error.to_string())
-}
-
-impl Entry {
-  fn from_story(story: Story) -> Self {
-    let detail = match (story.score, story.by.as_deref()) {
-      (Some(score), Some(by)) => {
-        Some(format!("{} by {}", format_points(score), by))
-      }
-      (Some(score), None) => Some(format_points(score)),
-      (None, Some(by)) => Some(format!("by {by}")),
-      _ => None,
-    };
-
-    Self {
-      id: story.id.to_string(),
-      title: story.title,
-      detail,
-      url: story.url,
-    }
-  }
-
-  fn from_comment(hit: CommentHit) -> Self {
-    let author = hit.author.unwrap_or_else(|| "unknown".to_string());
-
-    let snippet = hit
-      .comment_text
-      .as_deref()
-      .map(sanitize_comment)
-      .map(|text| text_snippet(&text, 120));
-
-    let detail = snippet.map(|text| format!("{author}: {text}"));
-
-    let title = hit
-      .story_title
-      .unwrap_or_else(|| "Comment thread".to_string());
-
-    let url = hit.story_url.or_else(|| {
-      hit
-        .story_id
-        .as_ref()
-        .map(|id| format!("https://news.ycombinator.com/item?id={id}"))
-    });
-
-    Self {
-      id: hit.object_id,
-      title,
-      detail,
-      url,
-    }
-  }
 }
 
 fn sanitize_comment(text: &str) -> String {
@@ -400,8 +331,10 @@ fn sanitize_comment(text: &str) -> String {
     }
   }
 
-  let decoded = decode_entities(cleaned.trim());
-  decoded.split_whitespace().collect::<Vec<_>>().join(" ")
+  decode_entities(cleaned.trim())
+    .split_whitespace()
+    .collect::<Vec<_>>()
+    .join(" ")
 }
 
 fn decode_entities(input: &str) -> String {
@@ -414,37 +347,23 @@ fn decode_entities(input: &str) -> String {
     .replace("&amp;", "&")
 }
 
-fn text_snippet(text: &str, max_chars: usize) -> String {
+fn truncate(text: &str, max_chars: usize) -> String {
   if text.chars().count() <= max_chars {
     return text.to_string();
   }
 
   let mut result = String::new();
+
   for (idx, ch) in text.chars().enumerate() {
     if idx >= max_chars {
       result.push_str("...");
       break;
     }
+
     result.push(ch);
   }
 
   result.trim_end().to_string()
-}
-
-fn truncate(text: &str, max_chars: usize) -> String {
-  if text.chars().count() <= max_chars {
-    text.to_string()
-  } else {
-    let mut out = String::new();
-    for (idx, ch) in text.chars().enumerate() {
-      if idx >= max_chars {
-        out.push_str("...");
-        break;
-      }
-      out.push(ch);
-    }
-    out
-  }
 }
 
 fn format_points(score: u64) -> String {
@@ -483,10 +402,8 @@ where
   }
 }
 
-type AppResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
-
 #[tokio::main]
-async fn main() -> AppResult<()> {
+async fn main() -> Result {
   let client = Client::default();
 
   let tabs = client.load_tabs(STORY_LIMIT).await?;

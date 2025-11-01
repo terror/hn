@@ -14,42 +14,18 @@ impl Default for Client {
 }
 
 impl Client {
-  pub(crate) async fn load_tabs(
-    &self,
-    limit: usize,
-  ) -> AppResult<Vec<TabData>> {
-    let tasks = Category::all().iter().map(|category| {
-      let client = self.clone();
+  const API_BASE_URL: &str = "https://hacker-news.firebaseio.com/v0";
 
-      let category = *category;
+  const COMMENTS_URL: &str =
+    "https://hn.algolia.com/api/v1/search_by_date?tags=comment&hitsPerPage=";
 
-      async move {
-        let entries = client.fetch_category_items(category, limit).await?;
-
-        Ok::<TabData, Box<dyn Error + Send + Sync>>(TabData {
-          label: category.label,
-          items: entries,
-          selected: 0,
-        })
-      }
-    });
-
-    let results = join_all(tasks).await;
-
-    let mut tabs = Vec::with_capacity(results.len());
-
-    for result in results {
-      tabs.push(result?);
-    }
-
-    Ok(tabs)
-  }
+  const ITEM_URL: &str = "https://hacker-news.firebaseio.com/v0/item";
 
   pub(crate) async fn fetch_category_items(
     &self,
     category: Category,
     limit: usize,
-  ) -> AppResult<Vec<Entry>> {
+  ) -> Result<Vec<Entry>> {
     Ok(match category.kind {
       CategoryKind::Stories(endpoint) => self
         .fetch_stories(endpoint, limit)
@@ -61,12 +37,31 @@ impl Client {
     })
   }
 
+  pub(crate) async fn fetch_comments(
+    &self,
+    limit: usize,
+  ) -> Result<Vec<Entry>> {
+    Ok(
+      self
+        .client
+        .get(format!("{}{limit}", Self::COMMENTS_URL))
+        .send()
+        .await?
+        .json::<CommentResponse>()
+        .await?
+        .hits
+        .into_iter()
+        .map(Entry::from_comment)
+        .collect(),
+    )
+  }
+
   pub(crate) async fn fetch_stories(
     &self,
     endpoint: &str,
     limit: usize,
-  ) -> AppResult<Vec<Story>> {
-    let ids_url = format!("{API_BASE_URL}/{endpoint}.json");
+  ) -> Result<Vec<Story>> {
+    let ids_url = format!("{}/{endpoint}.json", Self::API_BASE_URL);
 
     let story_ids = self
       .client
@@ -84,7 +79,7 @@ impl Client {
       async move {
         client
           .client
-          .get(format!("{ITEM_URL}/{id}.json"))
+          .get(format!("{}/{id}.json", Self::ITEM_URL))
           .send()
           .await?
           .json::<Story>()
@@ -104,22 +99,33 @@ impl Client {
     Ok(stories)
   }
 
-  pub(crate) async fn fetch_comments(
-    &self,
-    limit: usize,
-  ) -> AppResult<Vec<Entry>> {
-    Ok(
-      self
-        .client
-        .get(format!("{COMMENTS_URL}{limit}"))
-        .send()
-        .await?
-        .json::<CommentResponse>()
-        .await?
-        .hits
-        .into_iter()
-        .map(Entry::from_comment)
-        .collect(),
-    )
+  pub(crate) async fn load_tabs(&self, limit: usize) -> Result<Vec<TabData>> {
+    let tasks = Category::all().iter().map(|category| {
+      let client = self.clone();
+
+      let category = *category;
+
+      async move {
+        let entries = client.fetch_category_items(category, limit).await?;
+
+        Ok::<TabData, Box<dyn Error + Send + Sync>>(TabData {
+          items: entries,
+          label: category.label,
+          selected: 0,
+        })
+      }
+    });
+
+    let results = join_all(tasks).await;
+
+    let mut tabs = Vec::with_capacity(results.len());
+
+    for result in results {
+      tabs.push(
+        result.map_err(|error| anyhow!("failed to load result: {error}"))?,
+      );
+    }
+
+    Ok(tabs)
   }
 }
