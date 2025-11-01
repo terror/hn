@@ -1,3 +1,46 @@
+use super::*;
+
+pub(crate) fn open_entry(entry: &Entry) -> Result<String, String> {
+  let link = entry
+    .url
+    .clone()
+    .filter(|url| !url.is_empty())
+    .unwrap_or_else(|| {
+      format!("https://news.ycombinator.com/item?id={}", entry.id)
+    });
+
+  webbrowser::open(&link)
+    .map(|()| link.clone())
+    .map_err(|error| error.to_string())
+}
+
+pub(crate) fn deserialize_optional_string<'de, D>(
+  deserializer: D,
+) -> Result<Option<String>, D::Error>
+where
+  D: Deserializer<'de>,
+{
+  let value = Option::<Value>::deserialize(deserializer)?;
+
+  match value {
+    None | Some(Value::Null) => Ok(None),
+    Some(Value::String(s)) => Ok(Some(s)),
+    Some(Value::Number(n)) => Ok(Some(n.to_string())),
+    Some(Value::Bool(b)) => Err(de::Error::invalid_type(
+      Unexpected::Bool(b),
+      &"string or number",
+    )),
+    Some(Value::Array(_)) => Err(de::Error::invalid_type(
+      Unexpected::Seq,
+      &"string or number",
+    )),
+    Some(Value::Object(_)) => Err(de::Error::invalid_type(
+      Unexpected::Map,
+      &"string or number",
+    )),
+  }
+}
+
 pub(crate) fn sanitize_comment(text: &str) -> String {
   let mut cleaned = String::with_capacity(text.len());
   let mut inside_tag = false;
@@ -70,7 +113,7 @@ pub(crate) fn format_points(score: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use {super::*, serde::Deserialize};
 
   #[test]
   fn truncate_returns_original_when_within_limit() {
@@ -110,5 +153,35 @@ mod tests {
     assert_eq!(format_points(1), "1 point");
     assert_eq!(format_points(2), "2 points");
     assert_eq!(format_points(0), "0 points");
+  }
+
+  #[derive(Deserialize, Debug, PartialEq)]
+  struct OptionalWrapper {
+    #[serde(deserialize_with = "deserialize_optional_string")]
+    value: Option<String>,
+  }
+
+  fn parse_value(input: &str) -> Result<Option<String>, serde_json::Error> {
+    serde_json::from_str::<OptionalWrapper>(input).map(|wrapper| wrapper.value)
+  }
+
+  #[test]
+  fn deserialize_optional_string_supports_string_numbers_and_null() {
+    assert_eq!(
+      parse_value(r#"{"value": "hello"}"#).unwrap(),
+      Some("hello".to_string())
+    );
+
+    assert_eq!(
+      parse_value(r#"{"value": 42}"#).unwrap(),
+      Some("42".to_string())
+    );
+
+    assert_eq!(parse_value(r#"{"value": null}"#).unwrap(), None);
+
+    assert!(
+      parse_value(r#"{"value": true}"#).is_err(),
+      "bools should fail deserialization"
+    );
   }
 }

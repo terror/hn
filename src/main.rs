@@ -27,13 +27,16 @@ use {
     text::{Line, Span},
     widgets::{List, ListItem, ListState, Paragraph, Tabs},
   },
-  serde::{Deserialize, Deserializer},
+  serde::{
+    Deserialize, Deserializer,
+    de::{self, Unexpected},
+  },
   serde_json::Value,
   std::{
     io::{self, Stdout},
     time::Duration,
   },
-  utils::truncate,
+  utils::{deserialize_optional_string, open_entry, truncate},
 };
 
 const STORY_LIMIT: usize = 30;
@@ -281,49 +284,6 @@ fn draw(frame: &mut Frame, app: &App) {
     .style(Style::default().fg(Color::DarkGray));
 
   frame.render_widget(status, layout[2]);
-}
-
-fn open_entry(entry: &Entry) -> Result<String, String> {
-  let link = entry
-    .url
-    .clone()
-    .filter(|url| !url.is_empty())
-    .unwrap_or_else(|| {
-      format!("https://news.ycombinator.com/item?id={}", entry.id)
-    });
-
-  webbrowser::open(&link)
-    .map(|()| link.clone())
-    .map_err(|error| error.to_string())
-}
-
-fn deserialize_optional_string<'de, D>(
-  deserializer: D,
-) -> Result<Option<String>, D::Error>
-where
-  D: Deserializer<'de>,
-{
-  use serde::de::{self, Unexpected};
-
-  let value = Option::<Value>::deserialize(deserializer)?;
-
-  match value {
-    None | Some(serde_json::Value::Null) => Ok(None),
-    Some(Value::String(s)) => Ok(Some(s)),
-    Some(Value::Number(n)) => Ok(Some(n.to_string())),
-    Some(Value::Bool(b)) => Err(de::Error::invalid_type(
-      Unexpected::Bool(b),
-      &"string or number",
-    )),
-    Some(Value::Array(_)) => Err(de::Error::invalid_type(
-      Unexpected::Seq,
-      &"string or number",
-    )),
-    Some(Value::Object(_)) => Err(de::Error::invalid_type(
-      Unexpected::Map,
-      &"string or number",
-    )),
-  }
 }
 
 #[tokio::main]
