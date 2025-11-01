@@ -24,27 +24,31 @@ impl Client {
   pub(crate) async fn fetch_category_items(
     &self,
     category: Category,
-    limit: usize,
+    offset: usize,
+    count: usize,
   ) -> Result<Vec<Entry>> {
     Ok(match category.kind {
       CategoryKind::Stories(endpoint) => self
-        .fetch_stories(endpoint, limit)
+        .fetch_stories(endpoint, offset, count)
         .await?
         .into_iter()
         .map(Entry::from_story)
         .collect(),
-      CategoryKind::Comments => self.fetch_comments(limit).await?,
+      CategoryKind::Comments => self.fetch_comments(offset, count).await?,
     })
   }
 
   pub(crate) async fn fetch_comments(
     &self,
-    limit: usize,
+    offset: usize,
+    page_size: usize,
   ) -> Result<Vec<Entry>> {
+    let page = offset / page_size.max(1);
+
     Ok(
       self
         .client
-        .get(format!("{}{limit}", Self::COMMENTS_URL))
+        .get(format!("{}{page_size}&page={page}", Self::COMMENTS_URL))
         .send()
         .await?
         .json::<CommentResponse>()
@@ -59,7 +63,8 @@ impl Client {
   pub(crate) async fn fetch_stories(
     &self,
     endpoint: &str,
-    limit: usize,
+    offset: usize,
+    count: usize,
   ) -> Result<Vec<Story>> {
     let ids_url = format!("{}/{endpoint}.json", Self::API_BASE_URL);
 
@@ -71,7 +76,7 @@ impl Client {
       .json::<Vec<u64>>()
       .await?;
 
-    let story_ids = story_ids.into_iter().take(limit);
+    let story_ids = story_ids.into_iter().skip(offset).take(count);
 
     let responses = stream::iter(story_ids.map(|id| {
       let client = self.clone();
@@ -107,13 +112,15 @@ impl Client {
 
       async move {
         let entries = client
-          .fetch_category_items(category, limit)
+          .fetch_category_items(category, 0, limit)
           .await
           .with_context(|| {
             format!("failed to load {} entries", category.label)
           })?;
 
         Ok(TabData {
+          category,
+          has_more: entries.len() == limit,
           items: entries,
           label: category.label,
           selected: 0,

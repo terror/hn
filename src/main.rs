@@ -10,7 +10,7 @@ use {
   category::{Category, CategoryKind},
   client::Client,
   crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind},
+    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{
       EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
@@ -47,7 +47,7 @@ use {
   utils::{deserialize_optional_string, open_entry, truncate},
 };
 
-const STORY_LIMIT: usize = 30;
+const INITIAL_BATCH: usize = 30;
 
 #[derive(Debug, Deserialize)]
 struct CommentResponse {
@@ -67,6 +67,8 @@ struct CommentHit {
 }
 
 struct TabData {
+  category: Category,
+  has_more: bool,
   items: Vec<Entry>,
   label: &'static str,
   selected: usize,
@@ -98,11 +100,11 @@ fn restore_terminal(
 async fn run() -> Result {
   let client = Client::default();
 
-  let tabs = client.load_tabs(STORY_LIMIT).await?;
+  let tabs = client.load_tabs(INITIAL_BATCH).await?;
 
   let mut terminal = init_terminal()?;
 
-  let mut app = App::new(tabs);
+  let mut app = App::new(client, tabs);
 
   app.run(&mut terminal)?;
 
