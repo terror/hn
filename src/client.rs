@@ -1,4 +1,4 @@
-use super::*;
+use {super::*, anyhow::Context};
 
 #[derive(Clone)]
 pub(crate) struct Client {
@@ -106,9 +106,14 @@ impl Client {
       let category = *category;
 
       async move {
-        let entries = client.fetch_category_items(category, limit).await?;
+        let entries = client
+          .fetch_category_items(category, limit)
+          .await
+          .with_context(|| {
+            format!("failed to load {} entries", category.label)
+          })?;
 
-        Ok::<TabData, Box<dyn Error + Send + Sync>>(TabData {
+        Ok(TabData {
           items: entries,
           label: category.label,
           selected: 0,
@@ -116,15 +121,10 @@ impl Client {
       }
     });
 
-    let results = join_all(tasks).await;
-
-    let mut tabs = Vec::with_capacity(results.len());
-
-    for result in results {
-      tabs.push(
-        result.map_err(|error| anyhow!("failed to load result: {error}"))?,
-      );
-    }
+    let tabs = join_all(tasks)
+      .await
+      .into_iter()
+      .collect::<Result<Vec<_>>>()?;
 
     Ok(tabs)
   }

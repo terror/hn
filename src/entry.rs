@@ -1,4 +1,7 @@
-use super::*;
+use {
+  super::*,
+  crate::utils::{format_points, sanitize_comment, truncate},
+};
 
 pub(crate) struct Entry {
   pub(crate) detail: Option<String>,

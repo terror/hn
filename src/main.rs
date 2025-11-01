@@ -1,9 +1,9 @@
 mod category;
 mod client;
 mod entry;
+mod utils;
 
 use {
-  anyhow::anyhow,
   category::{Category, CategoryKind},
   client::Client,
   crossterm::{
@@ -30,16 +30,13 @@ use {
   serde::{Deserialize, Deserializer},
   serde_json::Value,
   std::{
-    error::Error,
     io::{self, Stdout},
     time::Duration,
   },
+  utils::truncate,
 };
 
 const STORY_LIMIT: usize = 30;
-
-const DEFAULT_MESSAGE: &str =
-  "↑/k up • ↓/j down • enter open • q/esc quit • ? more";
 
 #[derive(Debug, Deserialize)]
 struct Story {
@@ -83,11 +80,9 @@ type Result<T = (), E = anyhow::Error> = std::result::Result<T, E>;
 
 impl App {
   fn new(tabs: Vec<TabData>) -> Self {
-    let message = DEFAULT_MESSAGE.to_string();
-
     Self {
       active_tab: 0,
-      message,
+      message: "↑/k up • ↓/j down • enter open • q/esc quit • ? more".into(),
       tabs,
     }
   }
@@ -298,79 +293,6 @@ fn open_entry(entry: &Entry) -> Result<String, String> {
   webbrowser::open(&link)
     .map(|()| link.clone())
     .map_err(|error| error.to_string())
-}
-
-fn sanitize_comment(text: &str) -> String {
-  let mut cleaned = String::with_capacity(text.len());
-  let mut inside_tag = false;
-  let mut last_was_space = false;
-
-  for ch in text.chars() {
-    match ch {
-      '<' => {
-        inside_tag = true;
-        if !last_was_space {
-          cleaned.push(' ');
-          last_was_space = true;
-        }
-      }
-      '>' => {
-        inside_tag = false;
-      }
-      _ if inside_tag => {}
-      _ if ch.is_whitespace() => {
-        if !last_was_space {
-          cleaned.push(' ');
-          last_was_space = true;
-        }
-      }
-      _ => {
-        cleaned.push(ch);
-        last_was_space = false;
-      }
-    }
-  }
-
-  decode_entities(cleaned.trim())
-    .split_whitespace()
-    .collect::<Vec<_>>()
-    .join(" ")
-}
-
-fn decode_entities(input: &str) -> String {
-  input
-    .replace("&quot;", "\"")
-    .replace("&#x27;", "'")
-    .replace("&apos;", "'")
-    .replace("&lt;", "<")
-    .replace("&gt;", ">")
-    .replace("&amp;", "&")
-}
-
-fn truncate(text: &str, max_chars: usize) -> String {
-  if text.chars().count() <= max_chars {
-    return text.to_string();
-  }
-
-  let mut result = String::new();
-
-  for (idx, ch) in text.chars().enumerate() {
-    if idx >= max_chars {
-      result.push_str("...");
-      break;
-    }
-
-    result.push(ch);
-  }
-
-  result.trim_end().to_string()
-}
-
-fn format_points(score: u64) -> String {
-  match score {
-    1 => "1 point".to_string(),
-    _ => format!("{score} points"),
-  }
 }
 
 fn deserialize_optional_string<'de, D>(
