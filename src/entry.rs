@@ -10,8 +10,8 @@ pub(crate) struct Entry {
   pub(crate) url: Option<String>,
 }
 
-impl Entry {
-  pub(crate) fn from_comment(hit: CommentHit) -> Self {
+impl From<CommentHit> for Entry {
+  fn from(hit: CommentHit) -> Self {
     let author = hit.author.unwrap_or_else(|| "unknown".to_string());
 
     let snippet = hit
@@ -40,8 +40,10 @@ impl Entry {
       url,
     }
   }
+}
 
-  pub(crate) fn from_story(story: Story) -> Self {
+impl From<Story> for Entry {
+  fn from(story: Story) -> Self {
     let detail = match (story.score, story.by.as_deref()) {
       (Some(score), Some(by)) => {
         Some(format!("{} by {}", format_points(score), by))
@@ -58,7 +60,9 @@ impl Entry {
       url: story.url,
     }
   }
+}
 
+impl Entry {
   pub(crate) fn open(&self) -> Result<String, String> {
     let link = self
       .url

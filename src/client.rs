@@ -32,7 +32,7 @@ impl Client {
         .fetch_stories(endpoint, offset, count)
         .await?
         .into_iter()
-        .map(Entry::from_story)
+        .map(Entry::from)
         .collect(),
       CategoryKind::Comments => self.fetch_comments(offset, count).await?,
     })
@@ -55,7 +55,7 @@ impl Client {
         .await?
         .hits
         .into_iter()
-        .map(Entry::from_comment)
+        .map(Entry::from)
         .collect(),
     )
   }
