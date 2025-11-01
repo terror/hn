@@ -25,10 +25,12 @@ use {
   ratatui::{
     Frame, Terminal,
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{List, ListItem, ListState, Paragraph, Tabs},
+    widgets::{
+      Block, Borders, Clear, List, ListItem, ListState, Paragraph, Tabs, Wrap,
+    },
   },
   serde::{
     Deserialize, Deserializer,

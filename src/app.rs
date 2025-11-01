@@ -1,8 +1,29 @@
 use super::*;
 
+const DEFAULT_STATUS: &str = "↑/k up • ↓/j down • ←/h prev tab • →/l next tab • enter open • q/esc quit • ? help";
+const HELP_TITLE: &str = "Help";
+const HELP_STATUS: &str = "Press ? or esc to close help";
+const HELP_TEXT: &str = "\
+Navigation:
+  ← / h  previous tab
+  → / l  next tab
+  ↑ / k  move selection up
+  ↓ / j  move selection down
+  home    jump to first item
+  end     jump to last item
+
+Actions:
+  enter   open the selected item in your browser
+  q       quit hn
+  esc     close help or quit from the list
+  ?       toggle this help
+";
+
 pub(crate) struct App {
   active_tab: usize,
   message: String,
+  message_backup: Option<String>,
+  show_help: bool,
   tabs: Vec<TabData>,
 }
 
@@ -111,12 +132,59 @@ impl App {
       .style(Style::default().fg(Color::DarkGray));
 
     frame.render_widget(status, layout[2]);
+
+    if self.show_help {
+      let area = Self::help_area(frame.area());
+
+      frame.render_widget(Clear, area);
+
+      let help = Paragraph::new(HELP_TEXT)
+        .block(Block::default().title(HELP_TITLE).borders(Borders::ALL))
+        .wrap(Wrap { trim: true });
+
+      frame.render_widget(help, area);
+    }
+  }
+
+  fn show_help(&mut self) {
+    if !self.show_help {
+      self.message_backup = Some(self.message.clone());
+      self.message = HELP_STATUS.into();
+      self.show_help = true;
+    }
+  }
+
+  fn hide_help(&mut self) {
+    if self.show_help {
+      self.show_help = false;
+
+      if let Some(message) = self.message_backup.take() {
+        self.message = message;
+      } else {
+        self.message = DEFAULT_STATUS.into();
+      }
+    }
+  }
+
+  fn help_area(area: Rect) -> Rect {
+    let max_width = area.width.max(1);
+    let max_height = area.height.max(1);
+
+    let width = area.width.saturating_sub(4).min(68).max(1).min(max_width);
+    let height = area.height.saturating_sub(4).min(14).max(1).min(max_height);
+
+    let x = area.x + (area.width.saturating_sub(width)) / 2;
+    let y = area.y + (area.height.saturating_sub(height)) / 2;
+
+    Rect::new(x, y, width, height)
   }
 
   pub(crate) fn new(tabs: Vec<TabData>) -> Self {
     Self {
       active_tab: 0,
-      message: "↑/k up • ↓/j down • enter open • q/esc quit • ? more".into(),
+      message: DEFAULT_STATUS.into(),
+      message_backup: None,
+      show_help: false,
       tabs,
     }
   }
@@ -131,8 +199,23 @@ impl App {
       if event::poll(Duration::from_millis(200))? {
         match event::read()? {
           Event::Key(key) if key.kind == KeyEventKind::Press => {
+            if self.show_help {
+              match key.code {
+                KeyCode::Char('?') | KeyCode::Esc => {
+                  self.hide_help();
+                }
+                KeyCode::Char('q') | KeyCode::Char('Q') => break,
+                _ => {}
+              }
+
+              continue;
+            }
+
             match key.code {
-              KeyCode::Char('q' | 'Q') | KeyCode::Esc => break,
+              KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => break,
+              KeyCode::Char('?') => {
+                self.show_help();
+              }
               KeyCode::Left | KeyCode::Char('h') => {
                 if !self.tabs.is_empty() {
                   self.active_tab =
