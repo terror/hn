@@ -1,5 +1,6 @@
 use {
   category::{Category, CategoryKind},
+  client::Client,
   crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
     execute,
@@ -31,6 +32,7 @@ use {
 };
 
 mod category;
+mod client;
 
 const API_BASE_URL: &str = "https://hacker-news.firebaseio.com/v0";
 
@@ -43,8 +45,6 @@ const STORY_LIMIT: usize = 30;
 
 const DEFAULT_MESSAGE: &str =
   "↑/k up • ↓/j down • enter open • q/esc quit • ? more";
-
-type AppResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 #[derive(Debug, Deserialize)]
 struct Story {
@@ -105,92 +105,6 @@ impl App {
   fn refresh_hint(&mut self) {
     self.message = DEFAULT_MESSAGE.to_string();
   }
-}
-
-async fn load_tabs(limit: usize) -> AppResult<Vec<TabData>> {
-  let client = reqwest::Client::new();
-
-  let tasks = Category::all().iter().map(|category| {
-    let client = client.clone();
-
-    async move {
-      let entries = fetch_category_items(&client, *category, limit).await?;
-
-      Ok::<TabData, Box<dyn Error + Send + Sync>>(TabData {
-        label: category.label,
-        items: entries,
-        selected: 0,
-      })
-    }
-  });
-
-  let results = join_all(tasks).await;
-
-  let mut tabs = Vec::with_capacity(results.len());
-
-  for result in results {
-    tabs.push(result?);
-  }
-
-  Ok(tabs)
-}
-
-async fn fetch_category_items(
-  client: &reqwest::Client,
-  category: Category,
-  limit: usize,
-) -> AppResult<Vec<Entry>> {
-  let items = match category.kind {
-    CategoryKind::Stories(endpoint) => {
-      let stories = fetch_stories(client, endpoint, limit).await?;
-      stories.into_iter().map(Entry::from_story).collect()
-    }
-    CategoryKind::Comments => fetch_comments(client, limit).await?,
-  };
-
-  Ok(items)
-}
-
-async fn fetch_stories(
-  client: &reqwest::Client,
-  endpoint: &str,
-  limit: usize,
-) -> AppResult<Vec<Story>> {
-  let ids_url = format!("{API_BASE_URL}/{endpoint}.json");
-  let story_ids = client.get(ids_url).send().await?.json::<Vec<u64>>().await?;
-
-  let story_ids = story_ids.into_iter().take(limit);
-
-  let responses = stream::iter(story_ids.map(|id| {
-    let client = client.clone();
-    async move {
-      let response = client.get(format!("{ITEM_URL}/{id}.json")).send().await?;
-      response.json::<Story>().await
-    }
-  }))
-  .buffered(16)
-  .collect::<Vec<_>>()
-  .await;
-
-  let mut stories = Vec::with_capacity(responses.len());
-  for story in responses {
-    stories.push(story?);
-  }
-
-  Ok(stories)
-}
-
-async fn fetch_comments(
-  client: &reqwest::Client,
-  limit: usize,
-) -> AppResult<Vec<Entry>> {
-  let url = format!("{COMMENTS_URL}{limit}");
-  let response = client.get(url).send().await?;
-  let payload = response.json::<CommentResponse>().await?;
-
-  let entries = payload.hits.into_iter().map(Entry::from_comment).collect();
-
-  Ok(entries)
 }
 
 fn init_terminal() -> AppResult<Terminal<CrosstermBackend<Stdout>>> {
@@ -569,9 +483,13 @@ where
   }
 }
 
+type AppResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
+
 #[tokio::main]
 async fn main() -> AppResult<()> {
-  let tabs = load_tabs(STORY_LIMIT).await?;
+  let client = Client::default();
+
+  let tabs = client.load_tabs(STORY_LIMIT).await?;
 
   let mut terminal = init_terminal()?;
 
