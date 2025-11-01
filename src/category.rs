@@ -14,6 +14,10 @@ impl Category {
   pub fn all() -> &'static [Category] {
     &[
       Category {
+        label: "top",
+        kind: CategoryKind::Stories("topstories"),
+      },
+      Category {
         label: "new",
         kind: CategoryKind::Stories("newstories"),
       },
