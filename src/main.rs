@@ -44,7 +44,7 @@ use {
     time::Duration,
   },
   story::Story,
-  utils::{deserialize_optional_string, open_entry, truncate},
+  utils::{deserialize_optional_string, truncate},
 };
 
 const INITIAL_BATCH: usize = 30;

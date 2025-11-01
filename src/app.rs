@@ -400,7 +400,7 @@ impl App {
             if let Some(tab) = self.tabs.get(self.active_tab)
               && let Some(entry) = tab.items.get(tab.selected)
             {
-              match open_entry(entry) {
+              match entry.open() {
                 Ok(link) => {
                   self.message =
                     format!("Opened in browser: {}", truncate(&link, 80));

@@ -1,19 +1,5 @@
 use super::*;
 
-pub(crate) fn open_entry(entry: &Entry) -> Result<String, String> {
-  let link = entry
-    .url
-    .clone()
-    .filter(|url| !url.is_empty())
-    .unwrap_or_else(|| {
-      format!("https://news.ycombinator.com/item?id={}", entry.id)
-    });
-
-  webbrowser::open(&link)
-    .map(|()| link.clone())
-    .map_err(|error| error.to_string())
-}
-
 pub(crate) fn deserialize_optional_string<'de, D>(
   deserializer: D,
 ) -> Result<Option<String>, D::Error>
