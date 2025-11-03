@@ -68,8 +68,7 @@ use {
   story::Story,
   tab::Tab,
   utils::{
-    deserialize_optional_string, format_points, sanitize_comment, truncate,
-    wrap_text,
+    deserialize_optional_string, format_points, truncate, wrap_text,
   },
 };
 

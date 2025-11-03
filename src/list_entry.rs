@@ -14,7 +14,12 @@ impl From<CommentHit> for ListEntry {
     let snippet = hit
       .comment_text
       .as_deref()
-      .map(sanitize_comment)
+      .and_then(|html| {
+        html2text::from_read(html.as_bytes(), usize::MAX)
+          .ok()
+          .map(|text| text.trim_end().to_owned())
+      })
+      .filter(|text| !text.is_empty())
       .map(|text| truncate(&text, 120));
 
     let detail = snippet.map(|text| format!("{author}: {text}"));

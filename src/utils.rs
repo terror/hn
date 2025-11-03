@@ -34,62 +34,6 @@ pub(crate) fn format_points(score: u64) -> String {
   }
 }
 
-pub(crate) fn sanitize_comment(text: &str) -> String {
-  if text.trim().is_empty() {
-    return String::new();
-  }
-
-  let config = html2text::config::plain_no_decorate()
-    .allow_width_overflow()
-    .no_link_wrapping()
-    .no_table_borders();
-
-  let rendered = config
-    .string_from_read(text.as_bytes(), usize::MAX)
-    .unwrap_or_else(|_| html_escape::decode_html_entities(text).into_owned());
-
-  normalize_rendered_comment(&rendered)
-}
-
-fn normalize_rendered_comment(rendered: &str) -> String {
-  let trimmed = rendered.trim_end_matches('\n');
-
-  if trimmed.is_empty() {
-    return String::new();
-  }
-
-  let mut lines = trimmed.split('\n').map(str::to_string).collect::<Vec<_>>();
-
-  for line in &mut lines {
-    let trimmed_start = line.trim_start_matches(' ');
-
-    if let Some(rest) = trimmed_start.strip_prefix("* ") {
-      let indent_len = line.len() - trimmed_start.len();
-      let mut converted = String::new();
-      converted.push_str(&" ".repeat(indent_len));
-      converted.push_str("- ");
-      converted.push_str(rest);
-      *line = converted;
-      continue;
-    }
-
-    if let Some(rest) = trimmed_start.strip_prefix("*\t") {
-      let indent_len = line.len() - trimmed_start.len();
-      let mut converted = String::new();
-      converted.push_str(&" ".repeat(indent_len));
-      converted.push_str("-\t");
-      converted.push_str(rest);
-      *line = converted;
-    }
-  }
-
-  while matches!(lines.last(), Some(last) if last.is_empty()) {
-    lines.pop();
-  }
-
-  lines.join("\n")
-}
-
 pub(crate) fn truncate(text: &str, max_chars: usize) -> String {
   if text.chars().count() <= max_chars {
     return text.to_string();
@@ -187,53 +131,6 @@ mod tests {
   #[test]
   fn truncate_preserves_exact_length_strings() {
     assert_eq!(truncate("exact", 5), "exact");
-  }
-
-  #[test]
-  fn sanitize_comment_strips_tags_and_decodes_entities() {
-    assert_eq!(
-      sanitize_comment(
-        "<p>Hello &amp; <i>goodbye</i></p>\n<ul><li>First</li><li>Second</li></ul>"
-      ),
-      "Hello & goodbye\n- First\n- Second"
-    );
-  }
-
-  #[test]
-  fn sanitize_comment_collapses_whitespace() {
-    assert_eq!(
-      sanitize_comment("<div>Multiple   spaces<br/>and\tlines</div>"),
-      "Multiple spaces\nand lines"
-    );
-  }
-
-  #[test]
-  fn sanitize_comment_preserves_preformatted_blocks() {
-    let input = r"
-<p>we should aim to parse comments like this better, i believe some newlines got stripped?</p>
-<pre><code>#define _(e...) ({e;})
-
-#define x(a,e...) _(s x=a;e)
-
-#define $(a,b) if(a)b;else
-
-#define i(n,e) {int $n=n;int i=0;for(;i<$n;++i){e;}}
-</code></pre>
-<p>&gt;These are all pretty straight forward, with one subtle caveat I only realized from the annotated code. They're all macros to make common operations more compact: wrapping an expression in a block, defining a variable x and using it, conditional statements, and running an expression n times.</p>
-<p>This is war crime territory</p>
-    ";
-
-    let expected = "we should aim to parse comments like this better, i believe some newlines got stripped?\n\n#define _(e...) ({e;})\n\n#define x(a,e...) _(s x=a;e)\n\n#define $(a,b) if(a)b;else\n\n#define i(n,e) {int $n=n;int i=0;for(;i<$n;++i){e;}}\n\n>These are all pretty straight forward, with one subtle caveat I only realized from the annotated code. They're all macros to make common operations more compact: wrapping an expression in a block, defining a variable x and using it, conditional statements, and running an expression n times.\n\nThis is war crime territory";
-
-    assert_eq!(sanitize_comment(input), expected);
-  }
-
-  #[test]
-  fn sanitize_comment_decodes_numeric_entities() {
-    assert_eq!(
-      sanitize_comment("https:&#x2F;&#x2F;example.com&#47;path"),
-      "https://example.com/path"
-    );
   }
 
   #[test]

@@ -29,7 +29,11 @@ impl Client {
     let text = item
       .text
       .as_deref()
-      .map(crate::utils::sanitize_comment)
+      .and_then(|html| {
+        html2text::from_read(html.as_bytes(), usize::MAX)
+          .ok()
+          .map(|text| text.trim_end().to_owned())
+      })
       .filter(|content| !content.is_empty());
 
     Ok(Comment {
