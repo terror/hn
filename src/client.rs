@@ -176,25 +176,14 @@ impl Client {
     let item = self.fetch_item(id).await?;
 
     if let Some("comment") = item.r#type.as_deref() {
-      let title = item
-        .title
-        .clone()
-        .unwrap_or_else(|| format!("Comment {}", item.id));
-
       let comment = self.build_comment_from_item(item).await?;
 
       return Ok(CommentThread {
         focus: Some(comment.id),
         roots: vec![comment],
-        title,
         url: None,
       });
     }
-
-    let title = item
-      .title
-      .clone()
-      .unwrap_or_else(|| format!("Item {}", item.id));
 
     let url = item.url.clone();
 
@@ -205,7 +194,6 @@ impl Client {
     Ok(CommentThread {
       focus: None,
       roots,
-      title,
       url,
     })
   }

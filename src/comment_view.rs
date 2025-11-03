@@ -5,7 +5,6 @@ pub(crate) struct CommentView {
   pub(crate) link: String,
   pub(crate) offset: usize,
   pub(crate) selected: Option<usize>,
-  pub(crate) title: String,
 }
 
 impl CommentView {
@@ -58,10 +57,6 @@ impl CommentView {
     self.ensure_selection_visible();
   }
 
-  pub(crate) fn is_empty(&self) -> bool {
-    self.entries.is_empty()
-  }
-
   pub(crate) fn is_visible(&self, idx: usize) -> bool {
     let mut current = Some(idx);
 
@@ -112,16 +107,9 @@ impl CommentView {
     self.selected = Some(visible[target]);
   }
 
-  pub(crate) fn new(
-    thread: CommentThread,
-    fallback_title: String,
-    fallback_link: String,
-  ) -> Self {
+  pub(crate) fn new(thread: CommentThread, fallback_link: String) -> Self {
     let CommentThread {
-      focus,
-      roots,
-      title,
-      url,
+      focus, roots, url, ..
     } = thread;
 
     let mut entries = Vec::new();
@@ -135,18 +123,11 @@ impl CommentView {
       selected = Some(0);
     }
 
-    let title = if focus.is_some() || title.trim().is_empty() {
-      fallback_title
-    } else {
-      title
-    };
-
     Self {
       entries,
       link: url.unwrap_or(fallback_link),
       offset: 0,
       selected,
-      title,
     }
   }
 
@@ -265,10 +246,6 @@ impl CommentView {
     let previous = current.saturating_sub(1);
 
     self.selected = Some(visible[previous]);
-  }
-
-  pub(crate) fn title(&self) -> &str {
-    &self.title
   }
 
   pub(crate) fn toggle_selected(&mut self) {

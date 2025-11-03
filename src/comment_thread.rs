@@ -4,6 +4,5 @@ use super::*;
 pub(crate) struct CommentThread {
   pub(crate) focus: Option<u64>,
   pub(crate) roots: Vec<Comment>,
-  pub(crate) title: String,
   pub(crate) url: Option<String>,
 }

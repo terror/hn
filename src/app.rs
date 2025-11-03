@@ -555,7 +555,6 @@ impl App {
     };
 
     let entry_id = entry.id.clone();
-    let entry_title = entry.title.clone();
     let entry_url = entry.url.clone();
 
     let id = match entry_id.parse::<u64>() {
@@ -591,24 +590,14 @@ impl App {
         format!("https://news.ycombinator.com/item?id={entry_id}")
       });
 
-    let view = CommentView::new(thread, entry_title.clone(), fallback_link);
+    let view = CommentView::new(thread, fallback_link);
 
     self.store_active_list_view();
 
     self.mode = Mode::Comments(view);
 
-    if !self.show_help
-      && let Mode::Comments(view) = &self.mode
-    {
-      let title_snippet = truncate(view.title(), 40);
-
-      let prefix = if view.is_empty() {
-        format!("No comments yet for {title_snippet}")
-      } else {
-        format!("Comments for {title_snippet}")
-      };
-
-      self.message = format!("{prefix} — {COMMENTS_STATUS}");
+    if !self.show_help {
+      self.message = COMMENTS_STATUS.into();
     }
 
     Ok(())
