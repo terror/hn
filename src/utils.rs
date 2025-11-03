@@ -27,48 +27,11 @@ where
   }
 }
 
-pub(crate) fn sanitize_comment(text: &str) -> String {
-  let mut cleaned = String::with_capacity(text.len());
-  let mut inside_tag = false;
-  let mut last_was_space = false;
-
-  for ch in text.chars() {
-    match ch {
-      '<' => {
-        inside_tag = true;
-
-        if !last_was_space {
-          cleaned.push(' ');
-          last_was_space = true;
-        }
-      }
-      '>' => {
-        inside_tag = false;
-      }
-      _ if inside_tag => {}
-      _ if ch.is_whitespace() => {
-        if !last_was_space {
-          cleaned.push(' ');
-          last_was_space = true;
-        }
-      }
-      _ => {
-        cleaned.push(ch);
-        last_was_space = false;
-      }
-    }
+pub(crate) fn format_points(score: u64) -> String {
+  match score {
+    1 => "1 point".to_string(),
+    _ => format!("{score} points"),
   }
-
-  let cleaned = cleaned
-    .trim()
-    .replace("&quot;", "\"")
-    .replace("&#x27;", "'")
-    .replace("&apos;", "'")
-    .replace("&lt;", "<")
-    .replace("&gt;", ">")
-    .replace("&amp;", "&");
-
-  cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 pub(crate) fn truncate(text: &str, max_chars: usize) -> String {
@@ -90,18 +53,66 @@ pub(crate) fn truncate(text: &str, max_chars: usize) -> String {
   result.trim_end().to_string()
 }
 
-pub(crate) fn format_points(score: u64) -> String {
-  match score {
-    1 => "1 point".to_string(),
-    _ => format!("{score} points"),
+pub(crate) fn wrap_text(text: &str, width: usize) -> Vec<String> {
+  if text.is_empty() || width == 0 {
+    return Vec::new();
+  }
+
+  let mut lines = Vec::new();
+
+  for raw_line in text.split('\n') {
+    if raw_line.is_empty() {
+      lines.push(String::new());
+      continue;
+    }
+
+    if raw_line.trim().is_empty() {
+      lines.push(raw_line.to_string());
+      continue;
+    }
+
+    if raw_line.starts_with(' ') || raw_line.starts_with('\t') {
+      lines.push(raw_line.to_string());
+      continue;
+    }
+
+    let mut current = String::new();
+    let mut current_width = 0;
+
+    for word in raw_line.split_whitespace() {
+      let word_width = word.chars().count();
+
+      if current.is_empty() {
+        current.push_str(word);
+        current_width = word_width;
+      } else if current_width + 1 + word_width <= width {
+        current.push(' ');
+        current.push_str(word);
+        current_width += 1 + word_width;
+      } else {
+        lines.push(current);
+        current = word.to_string();
+        current_width = word_width;
+      }
+    }
+
+    if !current.is_empty() {
+      lines.push(current);
+    }
+  }
+
+  if lines.is_empty() {
+    vec![text.to_string()]
+  } else {
+    lines
   }
 }
 
 #[cfg(test)]
 mod tests {
-  use {super::*, serde::Deserialize};
+  use super::*;
 
-  #[derive(Deserialize, Debug, PartialEq)]
+  #[derive(serde::Deserialize, Debug, PartialEq)]
   struct OptionalWrapper {
     #[serde(deserialize_with = "deserialize_optional_string")]
     value: Option<String>,
@@ -123,21 +134,38 @@ mod tests {
   }
 
   #[test]
-  fn sanitize_comment_strips_tags_and_decodes_entities() {
+  fn wrap_text_returns_empty_for_empty_input() {
+    assert_eq!(wrap_text("", 10), Vec::<String>::new());
+  }
+
+  #[test]
+  fn wrap_text_keeps_whitespace_only_input() {
+    assert_eq!(wrap_text("   ", 5), vec!["   ".to_string()]);
+  }
+
+  #[test]
+  fn wrap_text_wraps_longer_text() {
     assert_eq!(
-      sanitize_comment(
-        "<p>Hello &amp; <i>goodbye</i></p>\n<ul><li>First</li><li>Second</li></ul>"
-      ),
-      "Hello & goodbye First Second"
+      wrap_text("hello brave new world", 11),
+      vec!["hello brave".to_string(), "new world".to_string()]
     );
   }
 
   #[test]
-  fn sanitize_comment_collapses_whitespace() {
+  fn wrap_text_respects_explicit_newlines() {
     assert_eq!(
-      sanitize_comment("<div>Multiple   spaces<br/>and\tlines</div>"),
-      "Multiple spaces and lines"
+      wrap_text("first line\n\nsecond line", 20),
+      vec![
+        "first line".to_string(),
+        String::new(),
+        "second line".to_string(),
+      ]
     );
+  }
+
+  #[test]
+  fn wrap_text_does_not_wrap_when_within_width() {
+    assert_eq!(wrap_text("short text", 20), vec!["short text".to_string()]);
   }
 
   #[test]

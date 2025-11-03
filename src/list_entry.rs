@@ -1,23 +1,25 @@
-use {
-  super::*,
-  crate::utils::{format_points, sanitize_comment, truncate},
-};
+use super::*;
 
-pub(crate) struct Entry {
+pub(crate) struct ListEntry {
   pub(crate) detail: Option<String>,
   pub(crate) id: String,
   pub(crate) title: String,
   pub(crate) url: Option<String>,
 }
 
-impl From<CommentHit> for Entry {
+impl From<CommentHit> for ListEntry {
   fn from(hit: CommentHit) -> Self {
     let author = hit.author.unwrap_or_else(|| "unknown".to_string());
 
     let snippet = hit
       .comment_text
       .as_deref()
-      .map(sanitize_comment)
+      .and_then(|html| {
+        html2text::from_read(html.as_bytes(), usize::MAX)
+          .ok()
+          .map(|text| text.trim_end().to_owned())
+      })
+      .filter(|text| !text.is_empty())
       .map(|text| truncate(&text, 120));
 
     let detail = snippet.map(|text| format!("{author}: {text}"));
@@ -42,7 +44,7 @@ impl From<CommentHit> for Entry {
   }
 }
 
-impl From<Story> for Entry {
+impl From<Story> for ListEntry {
   fn from(story: Story) -> Self {
     let detail = match (story.score, story.by.as_deref()) {
       (Some(score), Some(by)) => {
@@ -62,7 +64,7 @@ impl From<Story> for Entry {
   }
 }
 
-impl Entry {
+impl ListEntry {
   pub(crate) fn open(&self) -> Result<String, String> {
     let link = self
       .url

@@ -1,4 +1,4 @@
-use {super::*, anyhow::Context};
+use super::*;
 
 #[derive(Clone)]
 pub(crate) struct Client {
@@ -21,28 +21,88 @@ impl Client {
 
   const ITEM_URL: &str = "https://hacker-news.firebaseio.com/v0/item";
 
+  async fn build_comment_from_item(&self, item: Item) -> Result<Comment> {
+    let children = self
+      .fetch_comment_children(item.kids.clone().unwrap_or_default())
+      .await?;
+
+    let text = item
+      .text
+      .as_deref()
+      .and_then(|html| {
+        html2text::from_read(html.as_bytes(), usize::MAX)
+          .ok()
+          .map(|text| text.trim_end().to_owned())
+      })
+      .filter(|content| !content.is_empty());
+
+    Ok(Comment {
+      author: item.by,
+      children,
+      dead: item.dead.unwrap_or(false),
+      deleted: item.deleted.unwrap_or(false),
+      id: item.id,
+      text,
+    })
+  }
+
   pub(crate) async fn fetch_category_items(
     &self,
     category: Category,
     offset: usize,
     count: usize,
-  ) -> Result<Vec<Entry>> {
+  ) -> Result<Vec<ListEntry>> {
     Ok(match category.kind {
       CategoryKind::Stories(endpoint) => self
         .fetch_stories(endpoint, offset, count)
         .await?
         .into_iter()
-        .map(Entry::from)
+        .map(ListEntry::from)
         .collect(),
       CategoryKind::Comments => self.fetch_comments(offset, count).await?,
     })
+  }
+
+  async fn fetch_comment(&self, id: u64) -> Result<Option<Comment>> {
+    let item = self.fetch_item(id).await?;
+
+    if item.r#type.as_deref() != Some("comment") {
+      return Ok(None);
+    }
+
+    let comment = self.build_comment_from_item(item).await?;
+
+    Ok(Some(comment))
+  }
+
+  async fn fetch_comment_children(
+    &self,
+    ids: Vec<u64>,
+  ) -> Result<Vec<Comment>> {
+    let tasks = ids.into_iter().map(|child_id| {
+      let client = self.clone();
+
+      async move { client.fetch_comment(child_id).await }
+    });
+
+    let results = stream::iter(tasks).buffered(16).collect::<Vec<_>>().await;
+
+    let mut comments = Vec::new();
+
+    for result in results {
+      if let Some(comment) = result? {
+        comments.push(comment);
+      }
+    }
+
+    Ok(comments)
   }
 
   pub(crate) async fn fetch_comments(
     &self,
     offset: usize,
     page_size: usize,
-  ) -> Result<Vec<Entry>> {
+  ) -> Result<Vec<ListEntry>> {
     let page = offset / page_size.max(1);
 
     Ok(
@@ -55,8 +115,20 @@ impl Client {
         .await?
         .hits
         .into_iter()
-        .map(Entry::from)
+        .map(ListEntry::from)
         .collect(),
+    )
+  }
+
+  async fn fetch_item(&self, id: u64) -> Result<Item> {
+    Ok(
+      self
+        .client
+        .get(format!("{}/{id}.json", Self::ITEM_URL))
+        .send()
+        .await?
+        .json::<Item>()
+        .await?,
     )
   }
 
@@ -104,7 +176,36 @@ impl Client {
     Ok(stories)
   }
 
-  pub(crate) async fn load_tabs(&self, limit: usize) -> Result<Vec<TabData>> {
+  pub(crate) async fn fetch_thread(&self, id: u64) -> Result<CommentThread> {
+    let item = self.fetch_item(id).await?;
+
+    if let Some("comment") = item.r#type.as_deref() {
+      let comment = self.build_comment_from_item(item).await?;
+
+      return Ok(CommentThread {
+        focus: Some(comment.id),
+        roots: vec![comment],
+        url: None,
+      });
+    }
+
+    let url = item.url.clone();
+
+    let roots = self
+      .fetch_comment_children(item.kids.clone().unwrap_or_default())
+      .await?;
+
+    Ok(CommentThread {
+      focus: None,
+      roots,
+      url,
+    })
+  }
+
+  pub(crate) async fn load_tabs(
+    &self,
+    limit: usize,
+  ) -> Result<Vec<(Tab, ListView<ListEntry>)>> {
     let tasks = Category::all().iter().map(|category| {
       let client = self.clone();
 
@@ -118,14 +219,14 @@ impl Client {
             format!("failed to load {} entries", category.label)
           })?;
 
-        Ok(TabData {
-          category,
-          has_more: entries.len() == limit,
-          items: entries,
-          label: category.label,
-          selected: 0,
-          offset: 0,
-        })
+        Ok((
+          Tab {
+            category,
+            has_more: entries.len() == limit,
+            label: category.label,
+          },
+          ListView::new(entries),
+        ))
       }
     });
 
