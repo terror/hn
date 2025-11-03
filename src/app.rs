@@ -1,4 +1,4 @@
-use super::{action::Action, *};
+use super::*;
 
 const DEFAULT_STATUS: &str =
   "↑/k up • ↓/j down • enter comments • o open link • q/esc quit • ? help";
@@ -383,7 +383,7 @@ impl App {
     let fetched = tokio::task::block_in_place(|| {
       tokio::runtime::Handle::current().block_on(async move {
         client
-          .fetch_category_items(category, offset, INITIAL_BATCH)
+          .fetch_category_items(category, offset, INITIAL_BATCH_SIZE)
           .await
       })
     })?;
@@ -393,7 +393,7 @@ impl App {
     }
 
     if let Some(tab) = self.tabs.get_mut(tab_index) {
-      tab.has_more = fetched.len() >= INITIAL_BATCH;
+      tab.has_more = fetched.len() >= INITIAL_BATCH_SIZE;
     } else {
       return Ok(false);
     }

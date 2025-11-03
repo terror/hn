@@ -17,6 +17,7 @@ mod tab;
 mod utils;
 
 use {
+  action::Action,
   anyhow::Context,
   app::App,
   category::{Category, CategoryKind},
@@ -72,7 +73,7 @@ use {
   },
 };
 
-const INITIAL_BATCH: usize = 30;
+const INITIAL_BATCH_SIZE: usize = 30;
 
 type Result<T = (), E = anyhow::Error> = std::result::Result<T, E>;
 
@@ -100,7 +101,7 @@ fn restore_terminal(
 async fn run() -> Result {
   let client = Client::default();
 
-  let tabs = client.load_tabs(INITIAL_BATCH).await?;
+  let tabs = client.load_tabs(INITIAL_BATCH_SIZE).await?;
 
   let mut terminal = initialize_terminal()?;
 
