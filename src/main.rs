@@ -63,7 +63,7 @@ const INITIAL_BATCH: usize = 30;
 
 type Result<T = (), E = anyhow::Error> = std::result::Result<T, E>;
 
-fn init_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
+fn initialize_terminal() -> Result<Terminal<CrosstermBackend<Stdout>>> {
   enable_raw_mode()?;
 
   let mut stdout = io::stdout();
@@ -89,7 +89,7 @@ async fn run() -> Result {
 
   let tabs = client.load_tabs(INITIAL_BATCH).await?;
 
-  let mut terminal = init_terminal()?;
+  let mut terminal = initialize_terminal()?;
 
   let mut app = App::new(client, tabs);
 
