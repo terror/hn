@@ -1,6 +1,7 @@
 mod app;
 mod category;
 mod client;
+mod comment;
 mod entry;
 mod story;
 mod utils;

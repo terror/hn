@@ -1,5 +1,9 @@
 use {super::*, anyhow::Context};
 
+use crate::comment::{Comment, CommentThread};
+
+use serde::Deserialize;
+
 #[derive(Clone)]
 pub(crate) struct Client {
   client: reqwest::Client,
@@ -136,4 +140,127 @@ impl Client {
 
     Ok(tabs)
   }
+
+  pub(crate) async fn fetch_thread(&self, id: u64) -> Result<CommentThread> {
+    let item = self.fetch_item(id).await?;
+
+    match item.r#type.as_deref() {
+      Some("comment") => {
+        let title = item
+          .title
+          .clone()
+          .unwrap_or_else(|| format!("Comment {}", item.id));
+
+        let comment = self.build_comment_from_item(item).await?;
+
+        Ok(CommentThread {
+          focus: Some(comment.id),
+          roots: vec![comment],
+          title,
+          url: None,
+        })
+      }
+      _ => {
+        let title = item
+          .title
+          .clone()
+          .unwrap_or_else(|| format!("Item {}", item.id));
+
+        let url = item.url.clone();
+
+        let roots = self
+          .fetch_comment_children(item.kids.clone().unwrap_or_default())
+          .await?;
+
+        Ok(CommentThread {
+          focus: None,
+          roots,
+          title,
+          url,
+        })
+      }
+    }
+  }
+
+  async fn fetch_comment_children(
+    &self,
+    ids: Vec<u64>,
+  ) -> Result<Vec<Comment>> {
+    let tasks = ids.into_iter().map(|child_id| {
+      let client = self.clone();
+
+      async move { client.fetch_comment(child_id).await }
+    });
+
+    let results = stream::iter(tasks).buffered(16).collect::<Vec<_>>().await;
+
+    let mut comments = Vec::new();
+
+    for result in results {
+      match result? {
+        Some(comment) => comments.push(comment),
+        None => {}
+      }
+    }
+
+    Ok(comments)
+  }
+
+  async fn fetch_comment(&self, id: u64) -> Result<Option<Comment>> {
+    let item = self.fetch_item(id).await?;
+
+    if item.r#type.as_deref() != Some("comment") {
+      return Ok(None);
+    }
+
+    let comment = self.build_comment_from_item(item).await?;
+
+    Ok(Some(comment))
+  }
+
+  async fn build_comment_from_item(&self, item: Item) -> Result<Comment> {
+    let children = self
+      .fetch_comment_children(item.kids.clone().unwrap_or_default())
+      .await?;
+
+    let text = item
+      .text
+      .as_deref()
+      .map(|content| crate::utils::sanitize_comment(content))
+      .filter(|content| !content.is_empty());
+
+    Ok(Comment {
+      author: item.by,
+      children,
+      dead: item.dead.unwrap_or(false),
+      deleted: item.deleted.unwrap_or(false),
+      id: item.id,
+      text,
+    })
+  }
+
+  async fn fetch_item(&self, id: u64) -> Result<Item> {
+    Ok(
+      self
+        .client
+        .get(format!("{}/{id}.json", Self::ITEM_URL))
+        .send()
+        .await?
+        .json::<Item>()
+        .await?,
+    )
+  }
+}
+
+#[derive(Debug, Deserialize)]
+struct Item {
+  by: Option<String>,
+  dead: Option<bool>,
+  deleted: Option<bool>,
+  id: u64,
+  kids: Option<Vec<u64>>,
+  r#type: Option<String>,
+  text: Option<String>,
+  title: Option<String>,
+  url: Option<String>,
 }
