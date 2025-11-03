@@ -2,23 +2,30 @@ mod app;
 mod category;
 mod client;
 mod comment;
+mod comment_entry;
 mod comment_hit;
 mod comment_response;
 mod comment_thread;
-mod entry;
+mod comment_view;
 mod item;
+mod list_entry;
+mod list_view;
+mod mode;
 mod story;
 mod tab;
 mod utils;
 
 use {
+  anyhow::Context,
   app::App,
   category::{Category, CategoryKind},
   client::Client,
   comment::Comment,
+  comment_entry::CommentEntry,
   comment_hit::CommentHit,
   comment_response::CommentResponse,
   comment_thread::CommentThread,
+  comment_view::CommentView,
   crossterm::{
     event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     execute,
@@ -27,12 +34,14 @@ use {
       enable_raw_mode,
     },
   },
-  entry::Entry,
   futures::{
     future::join_all,
     stream::{self, StreamExt},
   },
   item::Item,
+  list_entry::ListEntry,
+  list_view::ListView,
+  mode::Mode,
   ratatui::{
     Frame, Terminal,
     backend::CrosstermBackend,
@@ -56,7 +65,10 @@ use {
   },
   story::Story,
   tab::Tab,
-  utils::{deserialize_optional_string, truncate, wrap_text},
+  utils::{
+    deserialize_optional_string, format_points, sanitize_comment, truncate,
+    wrap_text,
+  },
 };
 
 const INITIAL_BATCH: usize = 30;

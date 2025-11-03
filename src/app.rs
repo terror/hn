@@ -1,3 +1,5 @@
+#![allow(clippy::arbitrary_source_item_ordering)]
+
 use super::*;
 
 const DEFAULT_STATUS: &str =
@@ -54,356 +56,13 @@ pub(crate) struct App {
   message_backup: Option<String>,
   mode: Mode,
   show_help: bool,
+  tab_views: Vec<Option<ListView<ListEntry>>>,
   tabs: Vec<Tab>,
-}
-
-enum Mode {
-  Comments(CommentView),
-  List,
-}
-
-struct CommentView {
-  entries: Vec<CommentEntry>,
-  link: String,
-  offset: usize,
-  selected: Option<usize>,
-  title: String,
-}
-
-struct CommentEntry {
-  author: Option<String>,
-  body: String,
-  children: Vec<usize>,
-  dead: bool,
-  deleted: bool,
-  depth: usize,
-  expanded: bool,
-  parent: Option<usize>,
-}
-
-impl CommentView {
-  fn collapse_selected(&mut self) {
-    if let Some(selected) = self.selected
-      && let Some(entry) = self.entries.get_mut(selected)
-    {
-      if entry.expanded && !entry.children.is_empty() {
-        entry.expanded = false;
-      } else if let Some(parent) = entry.parent {
-        self.selected = Some(parent);
-      }
-    }
-
-    self.ensure_selection_visible();
-  }
-
-  fn ensure_selection_visible(&mut self) {
-    let mut current = self.selected;
-
-    while let Some(idx) = current {
-      if self.is_visible(idx) {
-        self.selected = Some(idx);
-        return;
-      }
-
-      current = self.entries.get(idx).and_then(|entry| entry.parent);
-    }
-
-    self.selected = self.visible_indexes().first().copied();
-  }
-
-  fn expand_selected(&mut self) {
-    if let Some(selected) = self.selected
-      && let Some(entry) = self.entries.get_mut(selected)
-    {
-      if entry.children.is_empty() {
-        return;
-      }
-
-      if entry.expanded {
-        if let Some(child) = entry.children.first().copied() {
-          self.selected = Some(child);
-        }
-      } else {
-        entry.expanded = true;
-      }
-    }
-
-    self.ensure_selection_visible();
-  }
-
-  fn is_empty(&self) -> bool {
-    self.entries.is_empty()
-  }
-
-  fn is_visible(&self, idx: usize) -> bool {
-    let mut current = Some(idx);
-
-    while let Some(i) = current {
-      if let Some(parent) = self.entries.get(i).and_then(|entry| entry.parent) {
-        if let Some(parent_entry) = self.entries.get(parent)
-          && !parent_entry.expanded
-        {
-          return false;
-        }
-
-        current = Some(parent);
-      } else {
-        break;
-      }
-    }
-
-    true
-  }
-
-  fn link(&self) -> &str {
-    &self.link
-  }
-
-  fn move_by(&mut self, delta: isize) {
-    let (visible, selected_pos) = self.visible_with_selection();
-
-    if visible.is_empty() {
-      self.selected = None;
-      return;
-    }
-
-    let current = selected_pos.unwrap_or(0);
-    let max_index = visible.len().saturating_sub(1);
-
-    let target = if delta >= 0 {
-      let delta_usize = usize::try_from(delta).unwrap_or(usize::MAX);
-      current.saturating_add(delta_usize).min(max_index)
-    } else {
-      let magnitude = delta
-        .checked_abs()
-        .and_then(|value| usize::try_from(value).ok())
-        .unwrap_or(usize::MAX);
-
-      current.saturating_sub(magnitude)
-    };
-
-    self.selected = Some(visible[target]);
-  }
-
-  fn new(
-    thread: CommentThread,
-    fallback_title: String,
-    fallback_link: String,
-  ) -> Self {
-    let CommentThread {
-      focus,
-      roots,
-      title,
-      url,
-    } = thread;
-
-    let mut entries = Vec::new();
-    let mut selected = None;
-
-    for comment in roots {
-      Self::push_comment(&mut entries, comment, None, 0, focus, &mut selected);
-    }
-
-    if selected.is_none() && !entries.is_empty() {
-      selected = Some(0);
-    }
-
-    let title = if focus.is_some() || title.trim().is_empty() {
-      fallback_title
-    } else {
-      title
-    };
-
-    Self {
-      entries,
-      link: url.unwrap_or(fallback_link),
-      offset: 0,
-      selected,
-      title,
-    }
-  }
-
-  fn page_down(&mut self, amount: usize) {
-    let step = amount.saturating_sub(1).max(1);
-    let delta = isize::try_from(step).unwrap_or(isize::MAX);
-    self.move_by(delta);
-  }
-
-  fn page_up(&mut self, amount: usize) {
-    let step = amount.saturating_sub(1).max(1);
-    let delta = isize::try_from(step).unwrap_or(isize::MAX);
-    self.move_by(-delta);
-  }
-
-  fn push_comment(
-    entries: &mut Vec<CommentEntry>,
-    comment: Comment,
-    parent: Option<usize>,
-    depth: usize,
-    focus: Option<u64>,
-    selected: &mut Option<usize>,
-  ) -> usize {
-    let Comment {
-      author,
-      children,
-      dead,
-      deleted,
-      id,
-      text,
-    } = comment;
-
-    let body = if deleted {
-      "[deleted]".to_string()
-    } else if dead {
-      "[dead]".to_string()
-    } else {
-      text.unwrap_or_default()
-    };
-
-    let idx = entries.len();
-
-    entries.push(CommentEntry {
-      author,
-      body,
-      children: Vec::new(),
-      dead,
-      deleted,
-      depth,
-      expanded: true,
-      parent,
-    });
-
-    if selected.is_none() && focus == Some(id) {
-      *selected = Some(idx);
-    }
-
-    let mut child_indices = Vec::new();
-
-    for child in children {
-      let child_idx = Self::push_comment(
-        entries,
-        child,
-        Some(idx),
-        depth.saturating_add(1),
-        focus,
-        selected,
-      );
-
-      child_indices.push(child_idx);
-    }
-
-    if let Some(entry) = entries.get_mut(idx) {
-      entry.children = child_indices;
-    }
-
-    idx
-  }
-
-  fn select_index_at(&mut self, pos: usize) {
-    let (visible, _) = self.visible_with_selection();
-
-    if visible.is_empty() {
-      self.selected = None;
-      return;
-    }
-
-    let index = pos.min(visible.len().saturating_sub(1));
-
-    self.selected = Some(visible[index]);
-  }
-
-  fn select_next(&mut self) {
-    let (visible, selected_pos) = self.visible_with_selection();
-
-    if visible.is_empty() {
-      self.selected = None;
-      return;
-    }
-
-    let current = selected_pos.unwrap_or(0);
-    let next = (current + 1).min(visible.len().saturating_sub(1));
-
-    self.selected = Some(visible[next]);
-  }
-
-  fn select_previous(&mut self) {
-    let (visible, selected_pos) = self.visible_with_selection();
-
-    if visible.is_empty() {
-      self.selected = None;
-      return;
-    }
-
-    let current = selected_pos.unwrap_or(0);
-    let previous = current.saturating_sub(1);
-
-    self.selected = Some(visible[previous]);
-  }
-
-  fn title(&self) -> &str {
-    &self.title
-  }
-
-  fn toggle_selected(&mut self) {
-    if let Some(selected) = self.selected
-      && let Some(entry) = self.entries.get_mut(selected)
-    {
-      if entry.children.is_empty() {
-        return;
-      }
-
-      entry.expanded = !entry.expanded;
-    }
-
-    self.ensure_selection_visible();
-  }
-
-  fn visible_indexes(&self) -> Vec<usize> {
-    let mut visible = Vec::new();
-
-    for idx in 0..self.entries.len() {
-      if self.is_visible(idx) {
-        visible.push(idx);
-      }
-    }
-
-    visible
-  }
-
-  fn visible_with_selection(&self) -> (Vec<usize>, Option<usize>) {
-    let visible = self.visible_indexes();
-
-    let selected_pos = self
-      .selected
-      .and_then(|selected| visible.iter().position(|&idx| idx == selected));
-
-    (visible, selected_pos)
-  }
-}
-
-impl CommentEntry {
-  fn body(&self) -> &str {
-    self.body.as_str()
-  }
-
-  fn has_children(&self) -> bool {
-    !self.children.is_empty()
-  }
-
-  fn header(&self) -> String {
-    let author = self.author.as_deref().unwrap_or("unknown");
-
-    match (self.deleted, self.dead) {
-      (true, _) => format!("{author} (deleted)"),
-      (_, true) => format!("{author} (dead)"),
-      _ => author.to_string(),
-    }
-  }
 }
 
 impl App {
   fn close_comments(&mut self) {
-    self.mode = Mode::List;
+    self.restore_active_list_view();
 
     if !self.show_help {
       self.message = DEFAULT_STATUS.into();
@@ -417,6 +76,7 @@ impl App {
   ) -> ListItem {
     let pointer = if is_selected { "▸ " } else { "  " };
     let pointer_blank = " ".repeat(pointer.chars().count());
+
     let indent = "  ".repeat(entry.depth);
 
     let toggle = if entry.has_children() {
@@ -455,15 +115,58 @@ impl App {
     ListItem::new(lines)
   }
 
-  fn current_entry(&self) -> Option<&Entry> {
-    self.tabs.get(self.active_tab).and_then(|tab| {
-      if tab.items.is_empty() {
-        None
-      } else {
-        let index = tab.selected.min(tab.items.len().saturating_sub(1));
-        tab.items.get(index)
+  fn current_entry(&self) -> Option<&ListEntry> {
+    self
+      .list_view(self.active_tab)
+      .and_then(|view| view.selected_item())
+  }
+
+  fn list_view(&self, index: usize) -> Option<&ListView<ListEntry>> {
+    if index >= self.tabs.len() {
+      return None;
+    }
+
+    if let Mode::List(view) = &self.mode
+      && index == self.active_tab
+    {
+      return Some(view);
+    }
+
+    self.tab_views.get(index).and_then(|slot| slot.as_ref())
+  }
+
+  fn list_view_mut(
+    &mut self,
+    index: usize,
+  ) -> Option<&mut ListView<ListEntry>> {
+    if index >= self.tabs.len() {
+      return None;
+    }
+
+    match &mut self.mode {
+      Mode::List(view) if index == self.active_tab => Some(view),
+      _ => self.tab_views.get_mut(index).and_then(|slot| slot.as_mut()),
+    }
+  }
+
+  fn store_active_list_view(&mut self) {
+    if let Mode::List(view) = &mut self.mode
+      && let Some(slot) = self.tab_views.get_mut(self.active_tab)
+    {
+      *slot = Some(std::mem::take(view));
+    }
+  }
+
+  fn restore_active_list_view(&mut self) {
+    if let Some(slot) = self.tab_views.get_mut(self.active_tab) {
+      if let Some(view) = slot.take() {
+        self.mode = Mode::List(view);
+      } else if !matches!(self.mode, Mode::List(_)) {
+        self.mode = Mode::List(ListView::default());
       }
-    })
+    } else if !matches!(self.mode, Mode::List(_)) {
+      self.mode = Mode::List(ListView::default());
+    }
   }
 
   fn draw(&mut self, frame: &mut Frame) {
@@ -498,18 +201,10 @@ impl App {
     frame.render_widget(tabs, layout[0]);
 
     let (list_items, selected_index, offset) = match &mut self.mode {
-      Mode::List => {
-        let (items, selected_index, offset): (&[Entry], Option<usize>, usize) =
-          if let Some(tab) = self.tabs.get(self.active_tab) {
-            if tab.items.is_empty() {
-              (&tab.items, None, 0)
-            } else {
-              let idx = tab.selected.min(tab.items.len() - 1);
-              (&tab.items, Some(idx), tab.offset.min(idx))
-            }
-          } else {
-            (&[], None, 0)
-          };
+      Mode::List(view) => {
+        let items = view.items();
+        let selected_index = view.selected_index();
+        let offset = view.offset();
 
         let list_items: Vec<ListItem> = if items.is_empty() {
           vec![ListItem::new(Line::from(
@@ -597,10 +292,8 @@ impl App {
     frame.render_stateful_widget(list, layout[1], &mut state);
 
     match &mut self.mode {
-      Mode::List => {
-        if let Some(tab) = self.tabs.get_mut(self.active_tab) {
-          tab.offset = state.offset();
-        }
+      Mode::List(view) => {
+        view.set_offset(state.offset());
       }
       Mode::Comments(view) => {
         view.offset = state.offset();
@@ -627,8 +320,10 @@ impl App {
 
   fn ensure_item(&mut self, tab_index: usize, target_index: usize) -> Result {
     loop {
-      let needs_more = if let Some(tab) = self.tabs.get(tab_index) {
-        target_index >= tab.items.len() && tab.has_more
+      let needs_more = if let Some(tab) = self.tabs.get(tab_index)
+        && let Some(list) = self.list_view(tab_index)
+      {
+        target_index >= list.len() && tab.has_more
       } else {
         false
       };
@@ -732,16 +427,23 @@ impl App {
         Ok(false)
       }
       KeyCode::Left | KeyCode::Char('h') => {
-        if !self.tabs.is_empty() {
-          self.active_tab =
-            (self.active_tab + self.tabs.len() - 1) % self.tabs.len();
+        let tab_count = self.tabs.len();
+
+        if tab_count != 0 {
+          self.store_active_list_view();
+          self.active_tab = (self.active_tab + tab_count - 1) % tab_count;
+          self.restore_active_list_view();
         }
 
         Ok(false)
       }
       KeyCode::Right | KeyCode::Char('l') => {
-        if !self.tabs.is_empty() {
-          self.active_tab = (self.active_tab + 1) % self.tabs.len();
+        let tab_count = self.tabs.len();
+
+        if tab_count != 0 {
+          self.store_active_list_view();
+          self.active_tab = (self.active_tab + 1) % tab_count;
+          self.restore_active_list_view();
         }
 
         Ok(false)
@@ -775,10 +477,11 @@ impl App {
         Ok(false)
       }
       KeyCode::End => {
-        if let Some(tab) = self.tabs.get_mut(self.active_tab)
-          && !tab.items.is_empty()
+        if let Some(list) = self.list_view_mut(self.active_tab)
+          && !list.is_empty()
         {
-          tab.selected = tab.items.len() - 1;
+          let last = list.len().saturating_sub(1);
+          list.set_selected(last);
         }
 
         Ok(false)
@@ -845,7 +548,11 @@ impl App {
         return Ok(false);
       }
 
-      (tab.category, tab.items.len())
+      let offset = self
+        .list_view(tab_index)
+        .map_or(0, ListView::<ListEntry>::len);
+
+      (tab.category, offset)
     } else {
       return Ok(false);
     };
@@ -875,33 +582,50 @@ impl App {
     }
 
     if let Some(tab) = self.tabs.get_mut(tab_index) {
-      if fetched.is_empty() {
-        tab.has_more = false;
-        return Ok(false);
-      }
+      tab.has_more = fetched.len() >= INITIAL_BATCH;
+    } else {
+      return Ok(false);
+    }
 
-      if fetched.len() < INITIAL_BATCH {
-        tab.has_more = false;
-      }
+    if fetched.is_empty() {
+      return Ok(false);
+    }
 
-      tab.items.extend(fetched);
-
+    if let Some(list) = self.list_view_mut(tab_index) {
+      list.extend(fetched);
       return Ok(true);
     }
 
     Ok(false)
   }
 
-  pub(crate) fn new(client: Client, tabs: Vec<Tab>) -> Self {
+  pub(crate) fn new(
+    client: Client,
+    tabs: Vec<(Tab, ListView<ListEntry>)>,
+  ) -> Self {
+    let mut tab_views: Vec<Option<ListView<ListEntry>>> = Vec::new();
+    let mut tab_meta = Vec::new();
+
+    for (tab, view) in tabs {
+      tab_meta.push(tab);
+      tab_views.push(Some(view));
+    }
+
+    let initial_view = tab_views
+      .get_mut(0)
+      .and_then(Option::take)
+      .unwrap_or_default();
+
     Self {
       active_tab: 0,
       client,
       list_height: 0,
       message: DEFAULT_STATUS.into(),
       message_backup: None,
-      mode: Mode::List,
+      mode: Mode::List(initial_view),
       show_help: false,
-      tabs,
+      tab_views,
+      tabs: tab_meta,
     }
   }
 
@@ -964,6 +688,8 @@ impl App {
 
     let view = CommentView::new(thread, entry_title.clone(), fallback_link);
 
+    self.store_active_list_view();
+
     self.mode = Mode::Comments(view);
 
     if !self.show_help
@@ -1003,10 +729,9 @@ impl App {
 
     let tab_index = self.active_tab.min(self.tabs.len().saturating_sub(1));
 
-    let current = {
-      let tab = &self.tabs[tab_index];
-      tab.selected
-    };
+    let current = self
+      .list_view(tab_index)
+      .map_or(0, ListView::<ListEntry>::selected_raw);
 
     let jump = self.page_jump();
 
@@ -1024,10 +749,9 @@ impl App {
 
     let tab_index = self.active_tab.min(self.tabs.len().saturating_sub(1));
 
-    let current = {
-      let tab = &self.tabs[tab_index];
-      tab.selected
-    };
+    let current = self
+      .list_view(tab_index)
+      .map_or(0, ListView::<ListEntry>::selected_raw);
 
     let jump = self.page_jump();
 
@@ -1062,7 +786,7 @@ impl App {
           KeyCode::Char('q' | 'Q') => Ok(true),
           _ => Ok(false),
         }
-      } else if matches!(self.mode, Mode::List) {
+      } else if matches!(self.mode, Mode::List(_)) {
         self.handle_list_key(key)
       } else {
         self.handle_comment_key(key)
@@ -1089,12 +813,8 @@ impl App {
 
     self.ensure_item(tab_index, target)?;
 
-    if let Some(tab) = self.tabs.get_mut(tab_index) {
-      if tab.items.is_empty() {
-        tab.selected = 0;
-      } else {
-        tab.selected = target.min(tab.items.len().saturating_sub(1));
-      }
+    if let Some(list) = self.list_view_mut(tab_index) {
+      list.set_selected(target);
     }
 
     Ok(())
@@ -1107,10 +827,9 @@ impl App {
 
     let tab_index = self.active_tab.min(self.tabs.len().saturating_sub(1));
 
-    let current = {
-      let tab = &self.tabs[tab_index];
-      tab.selected
-    };
+    let current = self
+      .list_view(tab_index)
+      .map_or(0, ListView::<ListEntry>::selected_raw);
 
     self.select_index(current.saturating_add(1))
   }
@@ -1122,10 +841,9 @@ impl App {
 
     let tab_index = self.active_tab.min(self.tabs.len().saturating_sub(1));
 
-    let current = {
-      let tab = &self.tabs[tab_index];
-      tab.selected
-    };
+    let current = self
+      .list_view(tab_index)
+      .map_or(0, ListView::<ListEntry>::selected_raw);
 
     self.select_index(current.saturating_sub(1))
   }

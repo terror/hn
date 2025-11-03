@@ -1,16 +1,13 @@
-use {
-  super::*,
-  crate::utils::{format_points, sanitize_comment, truncate},
-};
+use super::*;
 
-pub(crate) struct Entry {
+pub(crate) struct ListEntry {
   pub(crate) detail: Option<String>,
   pub(crate) id: String,
   pub(crate) title: String,
   pub(crate) url: Option<String>,
 }
 
-impl From<CommentHit> for Entry {
+impl From<CommentHit> for ListEntry {
   fn from(hit: CommentHit) -> Self {
     let author = hit.author.unwrap_or_else(|| "unknown".to_string());
 
@@ -42,7 +39,7 @@ impl From<CommentHit> for Entry {
   }
 }
 
-impl From<Story> for Entry {
+impl From<Story> for ListEntry {
   fn from(story: Story) -> Self {
     let detail = match (story.score, story.by.as_deref()) {
       (Some(score), Some(by)) => {
@@ -62,7 +59,7 @@ impl From<Story> for Entry {
   }
 }
 
-impl Entry {
+impl ListEntry {
   pub(crate) fn open(&self) -> Result<String, String> {
     let link = self
       .url

@@ -1,4 +1,4 @@
-use {super::*, anyhow::Context};
+use super::*;
 
 #[derive(Clone)]
 pub(crate) struct Client {
@@ -47,13 +47,13 @@ impl Client {
     category: Category,
     offset: usize,
     count: usize,
-  ) -> Result<Vec<Entry>> {
+  ) -> Result<Vec<ListEntry>> {
     Ok(match category.kind {
       CategoryKind::Stories(endpoint) => self
         .fetch_stories(endpoint, offset, count)
         .await?
         .into_iter()
-        .map(Entry::from)
+        .map(ListEntry::from)
         .collect(),
       CategoryKind::Comments => self.fetch_comments(offset, count).await?,
     })
@@ -98,7 +98,7 @@ impl Client {
     &self,
     offset: usize,
     page_size: usize,
-  ) -> Result<Vec<Entry>> {
+  ) -> Result<Vec<ListEntry>> {
     let page = offset / page_size.max(1);
 
     Ok(
@@ -111,7 +111,7 @@ impl Client {
         .await?
         .hits
         .into_iter()
-        .map(Entry::from)
+        .map(ListEntry::from)
         .collect(),
     )
   }
@@ -210,7 +210,10 @@ impl Client {
     })
   }
 
-  pub(crate) async fn load_tabs(&self, limit: usize) -> Result<Vec<Tab>> {
+  pub(crate) async fn load_tabs(
+    &self,
+    limit: usize,
+  ) -> Result<Vec<(Tab, ListView<ListEntry>)>> {
     let tasks = Category::all().iter().map(|category| {
       let client = self.clone();
 
@@ -224,14 +227,14 @@ impl Client {
             format!("failed to load {} entries", category.label)
           })?;
 
-        Ok(Tab {
-          category,
-          has_more: entries.len() == limit,
-          items: entries,
-          label: category.label,
-          selected: 0,
-          offset: 0,
-        })
+        Ok((
+          Tab {
+            category,
+            has_more: entries.len() == limit,
+            label: category.label,
+          },
+          ListView::new(entries),
+        ))
       }
     });
 

@@ -129,9 +129,9 @@ pub(crate) fn wrap_text(text: &str, width: usize) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-  use {super::*, serde::Deserialize};
+  use super::*;
 
-  #[derive(Deserialize, Debug, PartialEq)]
+  #[derive(serde::Deserialize, Debug, PartialEq)]
   struct OptionalWrapper {
     #[serde(deserialize_with = "deserialize_optional_string")]
     value: Option<String>,
