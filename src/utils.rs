@@ -59,16 +59,68 @@ pub(crate) fn sanitize_comment(text: &str) -> String {
     }
   }
 
-  let cleaned = cleaned
-    .trim()
-    .replace("&quot;", "\"")
-    .replace("&#x27;", "'")
-    .replace("&apos;", "'")
-    .replace("&lt;", "<")
-    .replace("&gt;", ">")
-    .replace("&amp;", "&");
+  let decoded = decode_html_entities(cleaned.trim());
 
-  cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
+  decoded.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn decode_html_entities(input: &str) -> String {
+  let mut result = String::with_capacity(input.len());
+  let mut index = 0;
+
+  while index < input.len() {
+    let rest = &input[index..];
+
+    if let Some(next_char) = rest.chars().next() {
+      if next_char != '&' {
+        result.push(next_char);
+        index += next_char.len_utf8();
+        continue;
+      }
+    } else {
+      break;
+    }
+
+    let semicolon_pos = rest.find(';');
+
+    if let Some(end) = semicolon_pos {
+      if let Some(decoded) = decode_html_entity(&rest[1..end]) {
+        result.push(decoded);
+        index += end + 1;
+        continue;
+      }
+    }
+
+    // No valid entity found, keep the original '&' and advance.
+    result.push('&');
+    index += 1;
+  }
+
+  result
+}
+
+fn decode_html_entity(entity: &str) -> Option<char> {
+  match entity {
+    "quot" => Some('"'),
+    "amp" => Some('&'),
+    "apos" => Some('\''),
+    "lt" => Some('<'),
+    "gt" => Some('>'),
+    "nbsp" => Some(' '),
+    _ => {
+      if let Some(hex) = entity.strip_prefix("#x").or_else(|| entity.strip_prefix("#X")) {
+        u32::from_str_radix(hex, 16)
+          .ok()
+          .and_then(char::from_u32)
+      } else if let Some(decimal) = entity.strip_prefix('#') {
+        u32::from_str_radix(decimal, 10)
+          .ok()
+          .and_then(char::from_u32)
+      } else {
+        None
+      }
+    }
+  }
 }
 
 pub(crate) fn truncate(text: &str, max_chars: usize) -> String {
@@ -137,6 +189,14 @@ mod tests {
     assert_eq!(
       sanitize_comment("<div>Multiple   spaces<br/>and\tlines</div>"),
       "Multiple spaces and lines"
+    );
+  }
+
+  #[test]
+  fn sanitize_comment_decodes_numeric_entities() {
+    assert_eq!(
+      sanitize_comment("https:&#x2F;&#x2F;example.com&#47;path"),
+      "https://example.com/path"
     );
   }
 
