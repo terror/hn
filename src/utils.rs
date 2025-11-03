@@ -209,7 +209,7 @@ mod tests {
 
   #[test]
   fn sanitize_comment_preserves_preformatted_blocks() {
-    let input = r#"
+    let input = r"
 <p>we should aim to parse comments like this better, i believe some newlines got stripped?</p>
 <pre><code>#define _(e...) ({e;})
 
@@ -221,7 +221,7 @@ mod tests {
 </code></pre>
 <p>&gt;These are all pretty straight forward, with one subtle caveat I only realized from the annotated code. They're all macros to make common operations more compact: wrapping an expression in a block, defining a variable x and using it, conditional statements, and running an expression n times.</p>
 <p>This is war crime territory</p>
-    "#;
+    ";
 
     let expected = "we should aim to parse comments like this better, i believe some newlines got stripped?\n\n#define _(e...) ({e;})\n\n#define x(a,e...) _(s x=a;e)\n\n#define $(a,b) if(a)b;else\n\n#define i(n,e) {int $n=n;int i=0;for(;i<$n;++i){e;}}\n\n>These are all pretty straight forward, with one subtle caveat I only realized from the annotated code. They're all macros to make common operations more compact: wrapping an expression in a block, defining a variable x and using it, conditional statements, and running an expression n times.\n\nThis is war crime territory";
 
