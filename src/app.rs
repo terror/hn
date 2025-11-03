@@ -158,9 +158,10 @@ impl App {
         let offset = view.offset();
 
         let list_items: Vec<ListItem> = if items.is_empty() {
-          vec![ListItem::new(Line::from(
-            "Nothing to show. Try another tab.",
-          ))]
+          vec![ListItem::new(Line::from(vec![
+            Span::raw(BASE_INDENT),
+            Span::raw("Nothing to show. Try another tab."),
+          ]))]
         } else {
           items
             .iter()
