@@ -73,9 +73,11 @@ impl App {
     let depth_indent = "  ".repeat(entry.depth);
     let indent = format!("{BASE_INDENT}{depth_indent}");
 
-    let toggle = entry
-      .has_children()
-      .then_some(if entry.expanded { "[-]" } else { "[+]" });
+    let toggle = entry.has_children().then_some(if entry.expanded {
+      "[-]"
+    } else {
+      "[+]"
+    });
 
     let mut header = vec![Span::raw(indent.clone())];
 
@@ -92,13 +94,8 @@ impl App {
     let mut lines = vec![Line::from(header)];
 
     if !entry.body().is_empty() {
-      let mut body_indent = indent.clone();
-
-      if let Some(symbol) = toggle {
-        let padding = " ".repeat(symbol.chars().count() + 1);
-        body_indent.push_str(&padding);
-      }
-
+      // Keep body text aligned with the toggle/indent instead of additional padding.
+      let body_indent = indent.clone();
       let prefix_width = body_indent.chars().count();
 
       let max_width = available_width as usize;

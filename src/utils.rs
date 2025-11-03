@@ -58,10 +58,7 @@ fn normalize_rendered_comment(rendered: &str) -> String {
     return String::new();
   }
 
-  let mut lines = trimmed
-    .split('\n')
-    .map(str::to_string)
-    .collect::<Vec<_>>();
+  let mut lines = trimmed.split('\n').map(str::to_string).collect::<Vec<_>>();
 
   for line in &mut lines {
     let trimmed_start = line.trim_start_matches(' ');
