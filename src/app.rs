@@ -196,7 +196,10 @@ impl App {
         let (visible, selected_pos) = view.visible_with_selection();
 
         let list_items: Vec<ListItem> = if visible.is_empty() {
-          vec![ListItem::new(Line::from("No comments yet."))]
+          vec![ListItem::new(Line::from(vec![
+            Span::raw(BASE_INDENT),
+            Span::raw("No comments yet."),
+          ]))]
         } else {
           visible
             .iter()
