@@ -25,10 +25,10 @@ const LOADING_COMMENTS_STATUS: &str = "Loading comments...";
 
 const HELP_TEXT: &str = "\
 Navigation:
-  ← / h  previous tab
-  → / l  next tab
-  ↑ / k  move selection up
-  ↓ / j  move selection down
+  ← / h   previous tab
+  → / l   next tab
+  ↑ / k   move selection up
+  ↓ / j   move selection down
   pg↓     page down
   pg↑     page up
   ctrl+d  page down
@@ -45,12 +45,12 @@ Actions:
   ?       toggle this help
 
 Comments:
-  ↑ / k  move selection up
-  ↓ / j  move selection down
+  ↑ / k   move selection up
+  ↓ / j   move selection down
   pg↓     page down
   pg↑     page up
-  ← / h  collapse or go to parent
-  → / l  expand or go to first child
+  ← / h   collapse or go to parent
+  → / l   expand or go to first child
   enter   toggle collapse or expand
   esc     return to the story list
 ";
