@@ -60,7 +60,7 @@ fn normalize_rendered_comment(rendered: &str) -> String {
 
   let mut lines = trimmed
     .split('\n')
-    .map(|line| line.to_string())
+    .map(str::to_string)
     .collect::<Vec<_>>();
 
   for line in &mut lines {

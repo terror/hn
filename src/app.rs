@@ -75,7 +75,7 @@ impl App {
 
     let toggle = entry
       .has_children()
-      .then(|| if entry.expanded { "[-]" } else { "[+]" });
+      .then_some(if entry.expanded { "[-]" } else { "[+]" });
 
     let mut header = vec![Span::raw(indent.clone())];
 
@@ -276,90 +276,11 @@ impl App {
     }
   }
 
-  fn handle_help_key(&mut self, key: KeyEvent) -> Action {
+  fn handle_help_key(key: KeyEvent) -> Action {
     match key.code {
       KeyCode::Char('?') | KeyCode::Esc => Action::HideHelp,
       KeyCode::Char('q' | 'Q') => Action::Quit,
       _ => Action::None,
-    }
-  }
-
-  fn perform_action(&mut self, action: Action) -> Result<bool> {
-    match action {
-      Action::Quit => Ok(true),
-      Action::ShowHelp => {
-        self.show_help();
-        Ok(false)
-      }
-      Action::HideHelp => {
-        self.hide_help();
-        Ok(false)
-      }
-      Action::SwitchTabLeft => {
-        self.switch_tab_left();
-        Ok(false)
-      }
-      Action::SwitchTabRight => {
-        self.switch_tab_right();
-        Ok(false)
-      }
-      Action::SelectNext => {
-        self.select_next()?;
-        Ok(false)
-      }
-      Action::SelectPrevious => {
-        self.select_previous()?;
-        Ok(false)
-      }
-      Action::PageDown => {
-        self.page_down()?;
-        Ok(false)
-      }
-      Action::PageUp => {
-        self.page_up()?;
-        Ok(false)
-      }
-      Action::SelectFirst => {
-        self.select_index(0)?;
-        Ok(false)
-      }
-      Action::OpenComments => {
-        self.open_comments()?;
-        Ok(false)
-      }
-      Action::OpenCurrentInBrowser => {
-        self.open_current_in_browser();
-        Ok(false)
-      }
-      Action::OpenCommentLink => {
-        self.open_comment_link();
-        Ok(false)
-      }
-      Action::CloseComments => {
-        self.close_comments();
-        Ok(false)
-      }
-      Action::None => Ok(false),
-    }
-  }
-
-  fn switch_tab_left(&mut self) {
-    let tab_count = self.tabs.len();
-
-    if tab_count != 0 {
-      self.store_active_list_view();
-      self.active_tab = (self.active_tab + tab_count - 1) % tab_count;
-      self.restore_active_list_view();
-    }
-  }
-
-  fn switch_tab_right(&mut self) {
-    let tab_count = self.tabs.len();
-
-    if tab_count != 0 {
-      self.store_active_list_view();
-      self.active_tab = (self.active_tab + 1) % tab_count;
-      self.restore_active_list_view();
     }
   }
 
@@ -640,6 +561,65 @@ impl App {
     self.select_index(current.saturating_sub(jump))
   }
 
+  fn perform_action(&mut self, action: Action) -> Result<bool> {
+    match action {
+      Action::Quit => Ok(true),
+      Action::ShowHelp => {
+        self.show_help();
+        Ok(false)
+      }
+      Action::HideHelp => {
+        self.hide_help();
+        Ok(false)
+      }
+      Action::SwitchTabLeft => {
+        self.switch_tab_left();
+        Ok(false)
+      }
+      Action::SwitchTabRight => {
+        self.switch_tab_right();
+        Ok(false)
+      }
+      Action::SelectNext => {
+        self.select_next()?;
+        Ok(false)
+      }
+      Action::SelectPrevious => {
+        self.select_previous()?;
+        Ok(false)
+      }
+      Action::PageDown => {
+        self.page_down()?;
+        Ok(false)
+      }
+      Action::PageUp => {
+        self.page_up()?;
+        Ok(false)
+      }
+      Action::SelectFirst => {
+        self.select_index(0)?;
+        Ok(false)
+      }
+      Action::OpenComments => {
+        self.open_comments()?;
+        Ok(false)
+      }
+      Action::OpenCurrentInBrowser => {
+        self.open_current_in_browser();
+        Ok(false)
+      }
+      Action::OpenCommentLink => {
+        self.open_comment_link();
+        Ok(false)
+      }
+      Action::CloseComments => {
+        self.close_comments();
+        Ok(false)
+      }
+      Action::None => Ok(false),
+    }
+  }
+
   fn restore_active_list_view(&mut self) {
     if let Some(slot) = self.tab_views.get_mut(self.active_tab) {
       if let Some(view) = slot.take() {
@@ -672,7 +652,7 @@ impl App {
       }
 
       let action = if self.show_help {
-        self.handle_help_key(key)
+        Self::handle_help_key(key)
       } else {
         self.mode.handle_key(key, self.list_height.max(1))
       };
@@ -746,6 +726,26 @@ impl App {
       && let Some(slot) = self.tab_views.get_mut(self.active_tab)
     {
       *slot = Some(std::mem::take(view));
+    }
+  }
+
+  fn switch_tab_left(&mut self) {
+    let tab_count = self.tabs.len();
+
+    if tab_count != 0 {
+      self.store_active_list_view();
+      self.active_tab = (self.active_tab + tab_count - 1) % tab_count;
+      self.restore_active_list_view();
+    }
+  }
+
+  fn switch_tab_right(&mut self) {
+    let tab_count = self.tabs.len();
+
+    if tab_count != 0 {
+      self.store_active_list_view();
+      self.active_tab = (self.active_tab + 1) % tab_count;
+      self.restore_active_list_view();
     }
   }
 }
