@@ -14,6 +14,8 @@ const LOADING_STATUS: &str = "Loading more entries...";
 
 const LOADING_COMMENTS_STATUS: &str = "Loading comments...";
 
+const BASE_INDENT: &str = " ";
+
 const HELP_TEXT: &str = "\
 Navigation:
   ← / h   previous tab
@@ -67,48 +69,48 @@ impl App {
     }
   }
 
-  fn comment_list_item(
-    entry: &CommentEntry,
-    is_selected: bool,
-    available_width: u16,
-  ) -> ListItem {
-    let pointer = if is_selected { "▸ " } else { "  " };
-    let pointer_blank = " ".repeat(pointer.chars().count());
+  fn comment_list_item(entry: &CommentEntry, available_width: u16) -> ListItem {
+    let depth_indent = "  ".repeat(entry.depth);
+    let indent = format!("{BASE_INDENT}{depth_indent}");
 
-    let indent = "  ".repeat(entry.depth);
+    let toggle = entry.has_children().then(|| if entry.expanded { "[-]" } else { "[+]" });
 
-    let toggle = if entry.has_children() {
-      if entry.expanded { "[-]" } else { "[+]" }
-    } else {
-      "   "
-    };
+    let mut header = vec![Span::raw(indent.clone())];
 
-    let mut lines = vec![Line::from(vec![
-      Span::raw(pointer),
-      Span::raw(indent.clone()),
-      Span::raw(toggle),
-      Span::raw(" "),
-      Span::styled(entry.header(), Style::default().fg(Color::White)),
-    ])];
+    if let Some(symbol) = toggle {
+      header.push(Span::raw(symbol));
+      header.push(Span::raw(" "));
+    }
+
+    header.push(Span::styled(
+      entry.header(),
+      Style::default().fg(Color::White),
+    ));
+
+    let mut lines = vec![Line::from(header)];
 
     if !entry.body().is_empty() {
-      let prefix_width =
-        pointer_blank.chars().count() + indent.chars().count() + 4;
+      let mut body_indent = indent.clone();
+
+      if let Some(symbol) = toggle {
+        let padding = " ".repeat(symbol.chars().count() + 1);
+        body_indent.push_str(&padding);
+      }
+
+      let prefix_width = body_indent.chars().count();
 
       let max_width = available_width as usize;
       let wrap_width = max_width.saturating_sub(prefix_width).max(1);
 
       for line in wrap_text(entry.body(), wrap_width) {
         lines.push(Line::from(vec![
-          Span::raw(pointer_blank.clone()),
-          Span::raw(indent.clone()),
-          Span::raw("    "),
+          Span::raw(body_indent.clone()),
           Span::styled(line, Style::default().fg(Color::DarkGray)),
         ]));
       }
     }
 
-    lines.push(Line::from(Span::raw(pointer_blank)));
+    lines.push(Line::from(Span::raw(indent.clone())));
 
     ListItem::new(lines)
   }
@@ -163,19 +165,9 @@ impl App {
         } else {
           items
             .iter()
-            .enumerate()
-            .map(|(idx, entry)| {
-              let pointer = if selected_index == Some(idx) {
-                "▸ "
-              } else {
-                "  "
-              };
-
-              let pointer_blank = " ".repeat(pointer.chars().count());
-              let indent = pointer_blank.clone();
-
+            .map(|entry| {
               let mut lines = vec![Line::from(vec![
-                Span::raw(pointer),
+                Span::raw(BASE_INDENT),
                 Span::styled(
                   entry.title.clone(),
                   Style::default().fg(Color::White),
@@ -184,7 +176,7 @@ impl App {
 
               if let Some(detail) = &entry.detail {
                 lines.push(Line::from(vec![
-                  Span::raw(indent.clone()),
+                  Span::raw(BASE_INDENT),
                   Span::styled(
                     detail.clone(),
                     Style::default().fg(Color::DarkGray),
@@ -192,7 +184,7 @@ impl App {
                 ]));
               }
 
-              lines.push(Line::from(Span::raw(indent)));
+              lines.push(Line::from(Span::raw(BASE_INDENT)));
 
               ListItem::new(lines)
             })
@@ -209,15 +201,7 @@ impl App {
         } else {
           visible
             .iter()
-            .enumerate()
-            .map(|(pos, &idx)| {
-              let is_selected = selected_pos == Some(pos);
-              Self::comment_list_item(
-                &view.entries[idx],
-                is_selected,
-                layout[1].width,
-              )
-            })
+            .map(|&idx| Self::comment_list_item(&view.entries[idx], layout[1].width))
             .collect()
         };
 
