@@ -71,6 +71,7 @@ struct TabData {
   has_more: bool,
   items: Vec<Entry>,
   label: &'static str,
+  offset: usize,
   selected: usize,
 }
 

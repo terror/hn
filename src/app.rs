@@ -72,16 +72,16 @@ impl App {
 
     frame.render_widget(tabs, layout[0]);
 
-    let (items, selected_index): (&[Entry], Option<usize>) =
+    let (items, selected_index, offset): (&[Entry], Option<usize>, usize) =
       if let Some(tab) = self.tabs.get(self.active_tab) {
-        let idx = if tab.items.is_empty() {
-          None
+        if tab.items.is_empty() {
+          (&tab.items, None, 0)
         } else {
-          Some(tab.selected.min(tab.items.len() - 1))
-        };
-        (&tab.items, idx)
+          let idx = tab.selected.min(tab.items.len() - 1);
+          (&tab.items, Some(idx), tab.offset.min(idx))
+        }
       } else {
-        (&[], None)
+        (&[], None, 0)
       };
 
     let list_items: Vec<ListItem> = if items.is_empty() {
@@ -127,11 +127,9 @@ impl App {
         .collect()
     };
 
-    let mut state = ListState::default();
-
-    if let Some(selected) = selected_index {
-      state.select(Some(selected));
-    }
+    let mut state = ListState::default()
+      .with_selected(selected_index)
+      .with_offset(offset);
 
     let list = List::new(list_items)
       .highlight_style(
@@ -142,6 +140,10 @@ impl App {
       .highlight_symbol("");
 
     frame.render_stateful_widget(list, layout[1], &mut state);
+
+    if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+      tab.offset = state.offset();
+    }
 
     let status = Paragraph::new(self.message.clone())
       .style(Style::default().fg(Color::DarkGray));

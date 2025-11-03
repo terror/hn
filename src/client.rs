@@ -124,6 +124,7 @@ impl Client {
           items: entries,
           label: category.label,
           selected: 0,
+          offset: 0,
         })
       }
     });
