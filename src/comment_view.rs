@@ -1,5 +1,3 @@
-#![allow(clippy::arbitrary_source_item_ordering)]
-
 use super::*;
 
 pub(crate) struct CommentView {
@@ -164,6 +162,70 @@ impl CommentView {
     self.move_by(-delta);
   }
 
+  fn push_comment(
+    entries: &mut Vec<CommentEntry>,
+    comment: Comment,
+    parent: Option<usize>,
+    depth: usize,
+    focus: Option<u64>,
+    selected: &mut Option<usize>,
+  ) -> usize {
+    let Comment {
+      author,
+      children,
+      dead,
+      deleted,
+      id,
+      text,
+    } = comment;
+
+    let body = if deleted {
+      "[deleted]".to_string()
+    } else if dead {
+      "[dead]".to_string()
+    } else {
+      text.unwrap_or_default()
+    };
+
+    let idx = entries.len();
+
+    entries.push(CommentEntry {
+      author,
+      body,
+      children: Vec::new(),
+      dead,
+      deleted,
+      depth,
+      expanded: true,
+      parent,
+    });
+
+    if selected.is_none() && focus == Some(id) {
+      *selected = Some(idx);
+    }
+
+    let mut child_indices = Vec::new();
+
+    for child in children {
+      let child_idx = Self::push_comment(
+        entries,
+        child,
+        Some(idx),
+        depth.saturating_add(1),
+        focus,
+        selected,
+      );
+
+      child_indices.push(child_idx);
+    }
+
+    if let Some(entry) = entries.get_mut(idx) {
+      entry.children = child_indices;
+    }
+
+    idx
+  }
+
   pub(crate) fn select_index_at(&mut self, pos: usize) {
     let (visible, _) = self.visible_with_selection();
 
@@ -243,69 +305,5 @@ impl CommentView {
       .and_then(|selected| visible.iter().position(|&idx| idx == selected));
 
     (visible, selected_pos)
-  }
-
-  fn push_comment(
-    entries: &mut Vec<CommentEntry>,
-    comment: Comment,
-    parent: Option<usize>,
-    depth: usize,
-    focus: Option<u64>,
-    selected: &mut Option<usize>,
-  ) -> usize {
-    let Comment {
-      author,
-      children,
-      dead,
-      deleted,
-      id,
-      text,
-    } = comment;
-
-    let body = if deleted {
-      "[deleted]".to_string()
-    } else if dead {
-      "[dead]".to_string()
-    } else {
-      text.unwrap_or_default()
-    };
-
-    let idx = entries.len();
-
-    entries.push(CommentEntry {
-      author,
-      body,
-      children: Vec::new(),
-      dead,
-      deleted,
-      depth,
-      expanded: true,
-      parent,
-    });
-
-    if selected.is_none() && focus == Some(id) {
-      *selected = Some(idx);
-    }
-
-    let mut child_indices = Vec::new();
-
-    for child in children {
-      let child_idx = Self::push_comment(
-        entries,
-        child,
-        Some(idx),
-        depth.saturating_add(1),
-        focus,
-        selected,
-      );
-
-      child_indices.push(child_idx);
-    }
-
-    if let Some(entry) = entries.get_mut(idx) {
-      entry.children = child_indices;
-    }
-
-    idx
   }
 }

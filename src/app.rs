@@ -1,5 +1,3 @@
-#![allow(clippy::arbitrary_source_item_ordering)]
-
 use super::*;
 
 const DEFAULT_STATUS: &str =
@@ -119,54 +117,6 @@ impl App {
     self
       .list_view(self.active_tab)
       .and_then(|view| view.selected_item())
-  }
-
-  fn list_view(&self, index: usize) -> Option<&ListView<ListEntry>> {
-    if index >= self.tabs.len() {
-      return None;
-    }
-
-    if let Mode::List(view) = &self.mode
-      && index == self.active_tab
-    {
-      return Some(view);
-    }
-
-    self.tab_views.get(index).and_then(|slot| slot.as_ref())
-  }
-
-  fn list_view_mut(
-    &mut self,
-    index: usize,
-  ) -> Option<&mut ListView<ListEntry>> {
-    if index >= self.tabs.len() {
-      return None;
-    }
-
-    match &mut self.mode {
-      Mode::List(view) if index == self.active_tab => Some(view),
-      _ => self.tab_views.get_mut(index).and_then(|slot| slot.as_mut()),
-    }
-  }
-
-  fn store_active_list_view(&mut self) {
-    if let Mode::List(view) = &mut self.mode
-      && let Some(slot) = self.tab_views.get_mut(self.active_tab)
-    {
-      *slot = Some(std::mem::take(view));
-    }
-  }
-
-  fn restore_active_list_view(&mut self) {
-    if let Some(slot) = self.tab_views.get_mut(self.active_tab) {
-      if let Some(view) = slot.take() {
-        self.mode = Mode::List(view);
-      } else if !matches!(self.mode, Mode::List(_)) {
-        self.mode = Mode::List(ListView::default());
-      }
-    } else if !matches!(self.mode, Mode::List(_)) {
-      self.mode = Mode::List(ListView::default());
-    }
   }
 
   fn draw(&mut self, frame: &mut Frame) {
@@ -542,6 +492,34 @@ impl App {
     }
   }
 
+  fn list_view(&self, index: usize) -> Option<&ListView<ListEntry>> {
+    if index >= self.tabs.len() {
+      return None;
+    }
+
+    if let Mode::List(view) = &self.mode
+      && index == self.active_tab
+    {
+      return Some(view);
+    }
+
+    self.tab_views.get(index).and_then(|slot| slot.as_ref())
+  }
+
+  fn list_view_mut(
+    &mut self,
+    index: usize,
+  ) -> Option<&mut ListView<ListEntry>> {
+    if index >= self.tabs.len() {
+      return None;
+    }
+
+    match &mut self.mode {
+      Mode::List(view) if index == self.active_tab => Some(view),
+      _ => self.tab_views.get_mut(index).and_then(|slot| slot.as_mut()),
+    }
+  }
+
   fn load_more_for_tab(&mut self, tab_index: usize) -> Result<bool> {
     let (category, offset) = if let Some(tab) = self.tabs.get(tab_index) {
       if !tab.has_more {
@@ -758,6 +736,18 @@ impl App {
     self.select_index(current.saturating_sub(jump))
   }
 
+  fn restore_active_list_view(&mut self) {
+    if let Some(slot) = self.tab_views.get_mut(self.active_tab) {
+      if let Some(view) = slot.take() {
+        self.mode = Mode::List(view);
+      } else if !matches!(self.mode, Mode::List(_)) {
+        self.mode = Mode::List(ListView::default());
+      }
+    } else if !matches!(self.mode, Mode::List(_)) {
+      self.mode = Mode::List(ListView::default());
+    }
+  }
+
   pub(crate) fn run(
     &mut self,
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
@@ -853,6 +843,14 @@ impl App {
       self.message_backup = Some(self.message.clone());
       self.message = HELP_STATUS.into();
       self.show_help = true;
+    }
+  }
+
+  fn store_active_list_view(&mut self) {
+    if let Mode::List(view) = &mut self.mode
+      && let Some(slot) = self.tab_views.get_mut(self.active_tab)
+    {
+      *slot = Some(std::mem::take(view));
     }
   }
 }

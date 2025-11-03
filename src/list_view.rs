@@ -1,5 +1,3 @@
-#![allow(clippy::arbitrary_source_item_ordering)]
-
 pub(crate) struct ListView<T> {
   items: Vec<T>,
   offset: usize,
@@ -17,12 +15,11 @@ impl<T> Default for ListView<T> {
 }
 
 impl<T> ListView<T> {
-  pub(crate) fn new(items: Vec<T>) -> Self {
-    Self {
-      items,
-      offset: 0,
-      selected: 0,
-    }
+  pub(crate) fn extend<I>(&mut self, items: I)
+  where
+    I: IntoIterator<Item = T>,
+  {
+    self.items.extend(items);
   }
 
   pub(crate) fn is_empty(&self) -> bool {
@@ -35,6 +32,14 @@ impl<T> ListView<T> {
 
   pub(crate) fn len(&self) -> usize {
     self.items.len()
+  }
+
+  pub(crate) fn new(items: Vec<T>) -> Self {
+    Self {
+      items,
+      offset: 0,
+      selected: 0,
+    }
   }
 
   pub(crate) fn offset(&self) -> usize {
@@ -80,12 +85,5 @@ impl<T> ListView<T> {
     } else {
       self.selected = index.min(self.items.len().saturating_sub(1));
     }
-  }
-
-  pub(crate) fn extend<I>(&mut self, items: I)
-  where
-    I: IntoIterator<Item = T>,
-  {
-    self.items.extend(items);
   }
 }
