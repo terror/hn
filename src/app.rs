@@ -1,7 +1,10 @@
 use super::*;
 
 use {
-  crate::comment::{Comment, CommentThread},
+  crate::{
+    comment::{Comment, CommentThread},
+    utils::wrap_text,
+  },
   crossterm::event::KeyEvent,
   std::convert::TryFrom,
 };
@@ -446,7 +449,7 @@ impl App {
       let max_width = available_width as usize;
       let wrap_width = max_width.saturating_sub(prefix_width).max(1);
 
-      for line in Self::wrap_text(entry.body(), wrap_width) {
+      for line in wrap_text(entry.body(), wrap_width) {
         lines.push(Line::from(vec![
           Span::raw(pointer_blank.clone()),
           Span::raw(indent.clone()),
@@ -1121,43 +1124,6 @@ impl App {
       self.message_backup = Some(self.message.clone());
       self.message = HELP_STATUS.into();
       self.show_help = true;
-    }
-  }
-
-  fn wrap_text(text: &str, width: usize) -> Vec<String> {
-    if text.is_empty() {
-      return Vec::new();
-    }
-
-    let mut lines = Vec::new();
-    let mut current = String::new();
-    let mut current_width = 0;
-
-    for word in text.split_whitespace() {
-      let word_width = word.chars().count();
-
-      if current.is_empty() {
-        current.push_str(word);
-        current_width = word_width;
-      } else if current_width + 1 + word_width <= width {
-        current.push(' ');
-        current.push_str(word);
-        current_width += 1 + word_width;
-      } else {
-        lines.push(current);
-        current = word.to_string();
-        current_width = word_width;
-      }
-    }
-
-    if !current.is_empty() {
-      lines.push(current);
-    }
-
-    if lines.is_empty() {
-      vec![text.to_string()]
-    } else {
-      lines
     }
   }
 }

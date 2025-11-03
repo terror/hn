@@ -141,6 +141,43 @@ pub(crate) fn truncate(text: &str, max_chars: usize) -> String {
   result.trim_end().to_string()
 }
 
+pub(crate) fn wrap_text(text: &str, width: usize) -> Vec<String> {
+  if text.is_empty() {
+    return Vec::new();
+  }
+
+  let mut lines = Vec::new();
+  let mut current = String::new();
+  let mut current_width = 0;
+
+  for word in text.split_whitespace() {
+    let word_width = word.chars().count();
+
+    if current.is_empty() {
+      current.push_str(word);
+      current_width = word_width;
+    } else if current_width + 1 + word_width <= width {
+      current.push(' ');
+      current.push_str(word);
+      current_width += 1 + word_width;
+    } else {
+      lines.push(current);
+      current = word.to_string();
+      current_width = word_width;
+    }
+  }
+
+  if !current.is_empty() {
+    lines.push(current);
+  }
+
+  if lines.is_empty() {
+    vec![text.to_string()]
+  } else {
+    lines
+  }
+}
+
 pub(crate) fn format_points(score: u64) -> String {
   match score {
     1 => "1 point".to_string(),
@@ -197,6 +234,29 @@ mod tests {
       sanitize_comment("https:&#x2F;&#x2F;example.com&#47;path"),
       "https://example.com/path"
     );
+  }
+
+  #[test]
+  fn wrap_text_returns_empty_for_empty_input() {
+    assert_eq!(wrap_text("", 10), Vec::<String>::new());
+  }
+
+  #[test]
+  fn wrap_text_keeps_whitespace_only_input() {
+    assert_eq!(wrap_text("   ", 5), vec!["   ".to_string()]);
+  }
+
+  #[test]
+  fn wrap_text_wraps_longer_text() {
+    assert_eq!(
+      wrap_text("hello brave new world", 11),
+      vec!["hello brave".to_string(), "new world".to_string()]
+    );
+  }
+
+  #[test]
+  fn wrap_text_does_not_wrap_when_within_width() {
+    assert_eq!(wrap_text("short text", 20), vec!["short text".to_string()]);
   }
 
   #[test]
