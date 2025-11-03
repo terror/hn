@@ -73,7 +73,9 @@ impl App {
     let depth_indent = "  ".repeat(entry.depth);
     let indent = format!("{BASE_INDENT}{depth_indent}");
 
-    let toggle = entry.has_children().then(|| if entry.expanded { "[-]" } else { "[+]" });
+    let toggle = entry
+      .has_children()
+      .then(|| if entry.expanded { "[-]" } else { "[+]" });
 
     let mut header = vec![Span::raw(indent.clone())];
 
@@ -201,7 +203,9 @@ impl App {
         } else {
           visible
             .iter()
-            .map(|&idx| Self::comment_list_item(&view.entries[idx], layout[1].width))
+            .map(|&idx| {
+              Self::comment_list_item(&view.entries[idx], layout[1].width)
+            })
             .collect()
         };
 

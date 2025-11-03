@@ -35,40 +35,62 @@ pub(crate) fn format_points(score: u64) -> String {
 }
 
 pub(crate) fn sanitize_comment(text: &str) -> String {
-  let mut cleaned = String::with_capacity(text.len());
-  let mut inside_tag = false;
-  let mut last_was_space = false;
+  if text.trim().is_empty() {
+    return String::new();
+  }
 
-  for ch in text.chars() {
-    match ch {
-      '<' => {
-        inside_tag = true;
+  let config = html2text::config::plain_no_decorate()
+    .allow_width_overflow()
+    .no_link_wrapping()
+    .no_table_borders();
 
-        if !last_was_space {
-          cleaned.push(' ');
-          last_was_space = true;
-        }
-      }
-      '>' => {
-        inside_tag = false;
-      }
-      _ if inside_tag => {}
-      _ if ch.is_whitespace() => {
-        if !last_was_space {
-          cleaned.push(' ');
-          last_was_space = true;
-        }
-      }
-      _ => {
-        cleaned.push(ch);
-        last_was_space = false;
-      }
+  let rendered = config
+    .string_from_read(text.as_bytes(), usize::MAX)
+    .unwrap_or_else(|_| html_escape::decode_html_entities(text).into_owned());
+
+  normalize_rendered_comment(&rendered)
+}
+
+fn normalize_rendered_comment(rendered: &str) -> String {
+  let trimmed = rendered.trim_end_matches('\n');
+
+  if trimmed.is_empty() {
+    return String::new();
+  }
+
+  let mut lines = trimmed
+    .split('\n')
+    .map(|line| line.to_string())
+    .collect::<Vec<_>>();
+
+  for line in &mut lines {
+    let trimmed_start = line.trim_start_matches(' ');
+
+    if let Some(rest) = trimmed_start.strip_prefix("* ") {
+      let indent_len = line.len() - trimmed_start.len();
+      let mut converted = String::new();
+      converted.push_str(&" ".repeat(indent_len));
+      converted.push_str("- ");
+      converted.push_str(rest);
+      *line = converted;
+      continue;
+    }
+
+    if let Some(rest) = trimmed_start.strip_prefix("*\t") {
+      let indent_len = line.len() - trimmed_start.len();
+      let mut converted = String::new();
+      converted.push_str(&" ".repeat(indent_len));
+      converted.push_str("-\t");
+      converted.push_str(rest);
+      *line = converted;
     }
   }
 
-  let decoded = html_escape::decode_html_entities(cleaned.trim());
+  while matches!(lines.last(), Some(last) if last.is_empty()) {
+    lines.pop();
+  }
 
-  decoded.split_whitespace().collect::<Vec<_>>().join(" ")
+  lines.join("\n")
 }
 
 pub(crate) fn truncate(text: &str, max_chars: usize) -> String {
@@ -91,33 +113,51 @@ pub(crate) fn truncate(text: &str, max_chars: usize) -> String {
 }
 
 pub(crate) fn wrap_text(text: &str, width: usize) -> Vec<String> {
-  if text.is_empty() {
+  if text.is_empty() || width == 0 {
     return Vec::new();
   }
 
   let mut lines = Vec::new();
-  let mut current = String::new();
-  let mut current_width = 0;
 
-  for word in text.split_whitespace() {
-    let word_width = word.chars().count();
-
-    if current.is_empty() {
-      current.push_str(word);
-      current_width = word_width;
-    } else if current_width + 1 + word_width <= width {
-      current.push(' ');
-      current.push_str(word);
-      current_width += 1 + word_width;
-    } else {
-      lines.push(current);
-      current = word.to_string();
-      current_width = word_width;
+  for raw_line in text.split('\n') {
+    if raw_line.is_empty() {
+      lines.push(String::new());
+      continue;
     }
-  }
 
-  if !current.is_empty() {
-    lines.push(current);
+    if raw_line.trim().is_empty() {
+      lines.push(raw_line.to_string());
+      continue;
+    }
+
+    if raw_line.starts_with(' ') || raw_line.starts_with('\t') {
+      lines.push(raw_line.to_string());
+      continue;
+    }
+
+    let mut current = String::new();
+    let mut current_width = 0;
+
+    for word in raw_line.split_whitespace() {
+      let word_width = word.chars().count();
+
+      if current.is_empty() {
+        current.push_str(word);
+        current_width = word_width;
+      } else if current_width + 1 + word_width <= width {
+        current.push(' ');
+        current.push_str(word);
+        current_width += 1 + word_width;
+      } else {
+        lines.push(current);
+        current = word.to_string();
+        current_width = word_width;
+      }
+    }
+
+    if !current.is_empty() {
+      lines.push(current);
+    }
   }
 
   if lines.is_empty() {
@@ -158,7 +198,7 @@ mod tests {
       sanitize_comment(
         "<p>Hello &amp; <i>goodbye</i></p>\n<ul><li>First</li><li>Second</li></ul>"
       ),
-      "Hello & goodbye First Second"
+      "Hello & goodbye\n- First\n- Second"
     );
   }
 
@@ -166,8 +206,29 @@ mod tests {
   fn sanitize_comment_collapses_whitespace() {
     assert_eq!(
       sanitize_comment("<div>Multiple   spaces<br/>and\tlines</div>"),
-      "Multiple spaces and lines"
+      "Multiple spaces\nand lines"
     );
+  }
+
+  #[test]
+  fn sanitize_comment_preserves_preformatted_blocks() {
+    let input = r#"
+<p>we should aim to parse comments like this better, i believe some newlines got stripped?</p>
+<pre><code>#define _(e...) ({e;})
+
+#define x(a,e...) _(s x=a;e)
+
+#define $(a,b) if(a)b;else
+
+#define i(n,e) {int $n=n;int i=0;for(;i<$n;++i){e;}}
+</code></pre>
+<p>&gt;These are all pretty straight forward, with one subtle caveat I only realized from the annotated code. They're all macros to make common operations more compact: wrapping an expression in a block, defining a variable x and using it, conditional statements, and running an expression n times.</p>
+<p>This is war crime territory</p>
+    "#;
+
+    let expected = "we should aim to parse comments like this better, i believe some newlines got stripped?\n\n#define _(e...) ({e;})\n\n#define x(a,e...) _(s x=a;e)\n\n#define $(a,b) if(a)b;else\n\n#define i(n,e) {int $n=n;int i=0;for(;i<$n;++i){e;}}\n\n>These are all pretty straight forward, with one subtle caveat I only realized from the annotated code. They're all macros to make common operations more compact: wrapping an expression in a block, defining a variable x and using it, conditional statements, and running an expression n times.\n\nThis is war crime territory";
+
+    assert_eq!(sanitize_comment(input), expected);
   }
 
   #[test]
@@ -193,6 +254,18 @@ mod tests {
     assert_eq!(
       wrap_text("hello brave new world", 11),
       vec!["hello brave".to_string(), "new world".to_string()]
+    );
+  }
+
+  #[test]
+  fn wrap_text_respects_explicit_newlines() {
+    assert_eq!(
+      wrap_text("first line\n\nsecond line", 20),
+      vec![
+        "first line".to_string(),
+        String::new(),
+        "second line".to_string(),
+      ]
     );
   }
 
