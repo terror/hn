@@ -25,6 +25,27 @@ impl Client {
 
   const ITEM_URL: &str = "https://hacker-news.firebaseio.com/v0/item";
 
+  async fn build_comment_from_item(&self, item: Item) -> Result<Comment> {
+    let children = self
+      .fetch_comment_children(item.kids.clone().unwrap_or_default())
+      .await?;
+
+    let text = item
+      .text
+      .as_deref()
+      .map(crate::utils::sanitize_comment)
+      .filter(|content| !content.is_empty());
+
+    Ok(Comment {
+      author: item.by,
+      children,
+      dead: item.dead.unwrap_or(false),
+      deleted: item.deleted.unwrap_or(false),
+      id: item.id,
+      text,
+    })
+  }
+
   pub(crate) async fn fetch_category_items(
     &self,
     category: Category,
@@ -40,6 +61,41 @@ impl Client {
         .collect(),
       CategoryKind::Comments => self.fetch_comments(offset, count).await?,
     })
+  }
+
+  async fn fetch_comment(&self, id: u64) -> Result<Option<Comment>> {
+    let item = self.fetch_item(id).await?;
+
+    if item.r#type.as_deref() != Some("comment") {
+      return Ok(None);
+    }
+
+    let comment = self.build_comment_from_item(item).await?;
+
+    Ok(Some(comment))
+  }
+
+  async fn fetch_comment_children(
+    &self,
+    ids: Vec<u64>,
+  ) -> Result<Vec<Comment>> {
+    let tasks = ids.into_iter().map(|child_id| {
+      let client = self.clone();
+
+      async move { client.fetch_comment(child_id).await }
+    });
+
+    let results = stream::iter(tasks).buffered(16).collect::<Vec<_>>().await;
+
+    let mut comments = Vec::new();
+
+    for result in results {
+      if let Some(comment) = result? {
+        comments.push(comment);
+      }
+    }
+
+    Ok(comments)
   }
 
   pub(crate) async fn fetch_comments(
@@ -61,6 +117,18 @@ impl Client {
         .into_iter()
         .map(Entry::from)
         .collect(),
+    )
+  }
+
+  async fn fetch_item(&self, id: u64) -> Result<Item> {
+    Ok(
+      self
+        .client
+        .get(format!("{}/{id}.json", Self::ITEM_URL))
+        .send()
+        .await?
+        .json::<Item>()
+        .await?,
     )
   }
 
@@ -108,6 +176,44 @@ impl Client {
     Ok(stories)
   }
 
+  pub(crate) async fn fetch_thread(&self, id: u64) -> Result<CommentThread> {
+    let item = self.fetch_item(id).await?;
+
+    if let Some("comment") = item.r#type.as_deref() {
+      let title = item
+        .title
+        .clone()
+        .unwrap_or_else(|| format!("Comment {}", item.id));
+
+      let comment = self.build_comment_from_item(item).await?;
+
+      return Ok(CommentThread {
+        focus: Some(comment.id),
+        roots: vec![comment],
+        title,
+        url: None,
+      });
+    }
+
+    let title = item
+      .title
+      .clone()
+      .unwrap_or_else(|| format!("Item {}", item.id));
+
+    let url = item.url.clone();
+
+    let roots = self
+      .fetch_comment_children(item.kids.clone().unwrap_or_default())
+      .await?;
+
+    Ok(CommentThread {
+      focus: None,
+      roots,
+      title,
+      url,
+    })
+  }
+
   pub(crate) async fn load_tabs(&self, limit: usize) -> Result<Vec<TabData>> {
     let tasks = Category::all().iter().map(|category| {
       let client = self.clone();
@@ -140,116 +246,6 @@ impl Client {
 
     Ok(tabs)
   }
-
-  pub(crate) async fn fetch_thread(&self, id: u64) -> Result<CommentThread> {
-    let item = self.fetch_item(id).await?;
-
-    match item.r#type.as_deref() {
-      Some("comment") => {
-        let title = item
-          .title
-          .clone()
-          .unwrap_or_else(|| format!("Comment {}", item.id));
-
-        let comment = self.build_comment_from_item(item).await?;
-
-        Ok(CommentThread {
-          focus: Some(comment.id),
-          roots: vec![comment],
-          title,
-          url: None,
-        })
-      }
-      _ => {
-        let title = item
-          .title
-          .clone()
-          .unwrap_or_else(|| format!("Item {}", item.id));
-
-        let url = item.url.clone();
-
-        let roots = self
-          .fetch_comment_children(item.kids.clone().unwrap_or_default())
-          .await?;
-
-        Ok(CommentThread {
-          focus: None,
-          roots,
-          title,
-          url,
-        })
-      }
-    }
-  }
-
-  async fn fetch_comment_children(
-    &self,
-    ids: Vec<u64>,
-  ) -> Result<Vec<Comment>> {
-    let tasks = ids.into_iter().map(|child_id| {
-      let client = self.clone();
-
-      async move { client.fetch_comment(child_id).await }
-    });
-
-    let results = stream::iter(tasks).buffered(16).collect::<Vec<_>>().await;
-
-    let mut comments = Vec::new();
-
-    for result in results {
-      match result? {
-        Some(comment) => comments.push(comment),
-        None => {}
-      }
-    }
-
-    Ok(comments)
-  }
-
-  async fn fetch_comment(&self, id: u64) -> Result<Option<Comment>> {
-    let item = self.fetch_item(id).await?;
-
-    if item.r#type.as_deref() != Some("comment") {
-      return Ok(None);
-    }
-
-    let comment = self.build_comment_from_item(item).await?;
-
-    Ok(Some(comment))
-  }
-
-  async fn build_comment_from_item(&self, item: Item) -> Result<Comment> {
-    let children = self
-      .fetch_comment_children(item.kids.clone().unwrap_or_default())
-      .await?;
-
-    let text = item
-      .text
-      .as_deref()
-      .map(|content| crate::utils::sanitize_comment(content))
-      .filter(|content| !content.is_empty());
-
-    Ok(Comment {
-      author: item.by,
-      children,
-      dead: item.dead.unwrap_or(false),
-      deleted: item.deleted.unwrap_or(false),
-      id: item.id,
-      text,
-    })
-  }
-
-  async fn fetch_item(&self, id: u64) -> Result<Item> {
-    Ok(
-      self
-        .client
-        .get(format!("{}/{id}.json", Self::ITEM_URL))
-        .send()
-        .await?
-        .json::<Item>()
-        .await?,
-    )
-  }
 }
 
 #[derive(Debug, Deserialize)]
@@ -259,8 +255,8 @@ struct Item {
   deleted: Option<bool>,
   id: u64,
   kids: Option<Vec<u64>>,
-  r#type: Option<String>,
   text: Option<String>,
   title: Option<String>,
+  r#type: Option<String>,
   url: Option<String>,
 }

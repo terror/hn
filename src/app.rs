@@ -3,6 +3,7 @@ use super::*;
 use {
   crate::comment::{Comment, CommentThread},
   crossterm::event::KeyEvent,
+  std::convert::TryFrom,
 };
 
 const DEFAULT_STATUS: &str =
@@ -63,8 +64,8 @@ pub(crate) struct App {
 }
 
 enum Mode {
-  List,
   Comments(CommentView),
+  List,
 }
 
 struct CommentView {
@@ -87,6 +88,109 @@ struct CommentEntry {
 }
 
 impl CommentView {
+  fn collapse_selected(&mut self) {
+    if let Some(selected) = self.selected
+      && let Some(entry) = self.entries.get_mut(selected)
+    {
+      if entry.expanded && !entry.children.is_empty() {
+        entry.expanded = false;
+      } else if let Some(parent) = entry.parent {
+        self.selected = Some(parent);
+      }
+    }
+
+    self.ensure_selection_visible();
+  }
+
+  fn ensure_selection_visible(&mut self) {
+    let mut current = self.selected;
+
+    while let Some(idx) = current {
+      if self.is_visible(idx) {
+        self.selected = Some(idx);
+        return;
+      }
+
+      current = self.entries.get(idx).and_then(|entry| entry.parent);
+    }
+
+    self.selected = self.visible_indexes().first().copied();
+  }
+
+  fn expand_selected(&mut self) {
+    if let Some(selected) = self.selected
+      && let Some(entry) = self.entries.get_mut(selected)
+    {
+      if entry.children.is_empty() {
+        return;
+      }
+
+      if entry.expanded {
+        if let Some(child) = entry.children.first().copied() {
+          self.selected = Some(child);
+        }
+      } else {
+        entry.expanded = true;
+      }
+    }
+
+    self.ensure_selection_visible();
+  }
+
+  fn is_empty(&self) -> bool {
+    self.entries.is_empty()
+  }
+
+  fn is_visible(&self, idx: usize) -> bool {
+    let mut current = Some(idx);
+
+    while let Some(i) = current {
+      if let Some(parent) = self.entries.get(i).and_then(|entry| entry.parent) {
+        if let Some(parent_entry) = self.entries.get(parent)
+          && !parent_entry.expanded
+        {
+          return false;
+        }
+
+        current = Some(parent);
+      } else {
+        break;
+      }
+    }
+
+    true
+  }
+
+  fn link(&self) -> &str {
+    &self.link
+  }
+
+  fn move_by(&mut self, delta: isize) {
+    let (visible, selected_pos) = self.visible_with_selection();
+
+    if visible.is_empty() {
+      self.selected = None;
+      return;
+    }
+
+    let current = selected_pos.unwrap_or(0);
+    let max_index = visible.len().saturating_sub(1);
+
+    let target = if delta >= 0 {
+      let delta_usize = usize::try_from(delta).unwrap_or(usize::MAX);
+      current.saturating_add(delta_usize).min(max_index)
+    } else {
+      let magnitude = delta
+        .checked_abs()
+        .and_then(|value| usize::try_from(value).ok())
+        .unwrap_or(usize::MAX);
+
+      current.saturating_sub(magnitude)
+    };
+
+    self.selected = Some(visible[target]);
+  }
+
   fn new(
     thread: CommentThread,
     fallback_title: String,
@@ -123,6 +227,18 @@ impl CommentView {
       selected,
       title,
     }
+  }
+
+  fn page_down(&mut self, amount: usize) {
+    let step = amount.saturating_sub(1).max(1);
+    let delta = isize::try_from(step).unwrap_or(isize::MAX);
+    self.move_by(delta);
+  }
+
+  fn page_up(&mut self, amount: usize) {
+    let step = amount.saturating_sub(1).max(1);
+    let delta = isize::try_from(step).unwrap_or(isize::MAX);
+    self.move_by(-delta);
   }
 
   fn push_comment(
@@ -189,47 +305,6 @@ impl CommentView {
     idx
   }
 
-  fn is_empty(&self) -> bool {
-    self.entries.is_empty()
-  }
-
-  fn visible_indexes(&self) -> Vec<usize> {
-    let mut visible = Vec::new();
-
-    for idx in 0..self.entries.len() {
-      if self.is_visible(idx) {
-        visible.push(idx);
-      }
-    }
-
-    visible
-  }
-
-  fn visible_with_selection(&self) -> (Vec<usize>, Option<usize>) {
-    let visible = self.visible_indexes();
-
-    let selected_pos = self
-      .selected
-      .and_then(|selected| visible.iter().position(|&idx| idx == selected));
-
-    (visible, selected_pos)
-  }
-
-  fn ensure_selection_visible(&mut self) {
-    let mut current = self.selected;
-
-    while let Some(idx) = current {
-      if self.is_visible(idx) {
-        self.selected = Some(idx);
-        return;
-      }
-
-      current = self.entries.get(idx).and_then(|entry| entry.parent);
-    }
-
-    self.selected = self.visible_indexes().first().copied();
-  }
-
   fn select_index_at(&mut self, pos: usize) {
     let (visible, _) = self.visible_with_selection();
 
@@ -271,110 +346,56 @@ impl CommentView {
     self.selected = Some(visible[previous]);
   }
 
-  fn move_by(&mut self, delta: isize) {
-    let (visible, selected_pos) = self.visible_with_selection();
-
-    if visible.is_empty() {
-      self.selected = None;
-      return;
-    }
-
-    let current = selected_pos.unwrap_or(0) as isize;
-    let max_index = (visible.len().saturating_sub(1)) as isize;
-
-    let target = (current + delta).clamp(0, max_index) as usize;
-
-    self.selected = Some(visible[target]);
-  }
-
-  fn page_down(&mut self, amount: usize) {
-    let step = amount.saturating_sub(1).max(1) as isize;
-    self.move_by(step);
-  }
-
-  fn page_up(&mut self, amount: usize) {
-    let step = amount.saturating_sub(1).max(1) as isize;
-    self.move_by(-step);
-  }
-
-  fn collapse_selected(&mut self) {
-    if let Some(selected) = self.selected {
-      if let Some(entry) = self.entries.get_mut(selected) {
-        if entry.expanded && !entry.children.is_empty() {
-          entry.expanded = false;
-        } else if let Some(parent) = entry.parent {
-          self.selected = Some(parent);
-        }
-      }
-    }
-
-    self.ensure_selection_visible();
-  }
-
-  fn expand_selected(&mut self) {
-    if let Some(selected) = self.selected {
-      if let Some(entry) = self.entries.get_mut(selected) {
-        if entry.children.is_empty() {
-          return;
-        }
-
-        if entry.expanded {
-          if let Some(child) = entry.children.first().copied() {
-            self.selected = Some(child);
-          }
-        } else {
-          entry.expanded = true;
-        }
-      }
-    }
-
-    self.ensure_selection_visible();
-  }
-
-  fn toggle_selected(&mut self) {
-    if let Some(selected) = self.selected {
-      if let Some(entry) = self.entries.get_mut(selected) {
-        if entry.children.is_empty() {
-          return;
-        }
-
-        entry.expanded = !entry.expanded;
-      }
-    }
-
-    self.ensure_selection_visible();
-  }
-
-  fn link(&self) -> &str {
-    &self.link
-  }
-
   fn title(&self) -> &str {
     &self.title
   }
 
-  fn is_visible(&self, idx: usize) -> bool {
-    let mut current = Some(idx);
+  fn toggle_selected(&mut self) {
+    if let Some(selected) = self.selected
+      && let Some(entry) = self.entries.get_mut(selected)
+    {
+      if entry.children.is_empty() {
+        return;
+      }
 
-    while let Some(i) = current {
-      if let Some(parent) = self.entries.get(i).and_then(|entry| entry.parent) {
-        if let Some(parent_entry) = self.entries.get(parent) {
-          if !parent_entry.expanded {
-            return false;
-          }
-        }
+      entry.expanded = !entry.expanded;
+    }
 
-        current = Some(parent);
-      } else {
-        break;
+    self.ensure_selection_visible();
+  }
+
+  fn visible_indexes(&self) -> Vec<usize> {
+    let mut visible = Vec::new();
+
+    for idx in 0..self.entries.len() {
+      if self.is_visible(idx) {
+        visible.push(idx);
       }
     }
 
-    true
+    visible
+  }
+
+  fn visible_with_selection(&self) -> (Vec<usize>, Option<usize>) {
+    let visible = self.visible_indexes();
+
+    let selected_pos = self
+      .selected
+      .and_then(|selected| visible.iter().position(|&idx| idx == selected));
+
+    (visible, selected_pos)
   }
 }
 
 impl CommentEntry {
+  fn body(&self) -> &str {
+    self.body.as_str()
+  }
+
+  fn has_children(&self) -> bool {
+    !self.children.is_empty()
+  }
+
   fn header(&self) -> String {
     let author = self.author.as_deref().unwrap_or("unknown");
 
@@ -384,17 +405,17 @@ impl CommentEntry {
       _ => author.to_string(),
     }
   }
-
-  fn body(&self) -> &str {
-    self.body.as_str()
-  }
-
-  fn has_children(&self) -> bool {
-    !self.children.is_empty()
-  }
 }
 
 impl App {
+  fn close_comments(&mut self) {
+    self.mode = Mode::List;
+
+    if !self.show_help {
+      self.message = DEFAULT_STATUS.into();
+    }
+  }
+
   fn comment_list_item(
     entry: &CommentEntry,
     is_selected: bool,
@@ -440,41 +461,15 @@ impl App {
     ListItem::new(lines)
   }
 
-  fn wrap_text(text: &str, width: usize) -> Vec<String> {
-    if text.is_empty() {
-      return Vec::new();
-    }
-
-    let mut lines = Vec::new();
-    let mut current = String::new();
-    let mut current_width = 0;
-
-    for word in text.split_whitespace() {
-      let word_width = word.chars().count();
-
-      if current.is_empty() {
-        current.push_str(word);
-        current_width = word_width;
-      } else if current_width + 1 + word_width <= width {
-        current.push(' ');
-        current.push_str(word);
-        current_width += 1 + word_width;
+  fn current_entry(&self) -> Option<&Entry> {
+    self.tabs.get(self.active_tab).and_then(|tab| {
+      if tab.items.is_empty() {
+        None
       } else {
-        lines.push(current);
-        current = word.to_string();
-        current_width = word_width;
+        let index = tab.selected.min(tab.items.len().saturating_sub(1));
+        tab.items.get(index)
       }
-    }
-
-    if !current.is_empty() {
-      lines.push(current);
-    }
-
-    if lines.is_empty() {
-      vec![text.to_string()]
-    } else {
-      lines
-    }
+    })
   }
 
   fn draw(&mut self, frame: &mut Frame) {
@@ -636,76 +631,21 @@ impl App {
     }
   }
 
-  fn handle_list_key(&mut self, key: KeyEvent) -> Result<bool> {
-    let modifiers = key.modifiers;
+  fn ensure_item(&mut self, tab_index: usize, target_index: usize) -> Result {
+    loop {
+      let needs_more = if let Some(tab) = self.tabs.get(tab_index) {
+        target_index >= tab.items.len() && tab.has_more
+      } else {
+        false
+      };
 
-    match key.code {
-      KeyCode::Char('q' | 'Q') | KeyCode::Esc => Ok(true),
-      KeyCode::Char('?') => {
-        self.show_help();
-        Ok(false)
+      if !needs_more {
+        return Ok(());
       }
-      KeyCode::Left | KeyCode::Char('h') => {
-        if !self.tabs.is_empty() {
-          self.active_tab =
-            (self.active_tab + self.tabs.len() - 1) % self.tabs.len();
-        }
 
-        Ok(false)
+      if !self.load_more_for_tab(tab_index)? {
+        return Ok(());
       }
-      KeyCode::Right | KeyCode::Char('l') => {
-        if !self.tabs.is_empty() {
-          self.active_tab = (self.active_tab + 1) % self.tabs.len();
-        }
-
-        Ok(false)
-      }
-      KeyCode::Down | KeyCode::Char('j') => {
-        self.select_next()?;
-        Ok(false)
-      }
-      KeyCode::Up | KeyCode::Char('k') => {
-        self.select_previous()?;
-        Ok(false)
-      }
-      KeyCode::PageDown => {
-        self.page_down()?;
-        Ok(false)
-      }
-      KeyCode::PageUp => {
-        self.page_up()?;
-        Ok(false)
-      }
-      KeyCode::Char('d') if modifiers.contains(KeyModifiers::CONTROL) => {
-        self.page_down()?;
-        Ok(false)
-      }
-      KeyCode::Char('u') if modifiers.contains(KeyModifiers::CONTROL) => {
-        self.page_up()?;
-        Ok(false)
-      }
-      KeyCode::Home => {
-        self.select_index(0)?;
-        Ok(false)
-      }
-      KeyCode::End => {
-        if let Some(tab) = self.tabs.get_mut(self.active_tab)
-          && !tab.items.is_empty()
-        {
-          tab.selected = tab.items.len() - 1;
-        }
-
-        Ok(false)
-      }
-      KeyCode::Enter => {
-        self.open_comments()?;
-        Ok(false)
-      }
-      KeyCode::Char('o' | 'O') => {
-        self.open_current_in_browser();
-        Ok(false)
-      }
-      _ => Ok(false),
     }
   }
 
@@ -788,21 +728,76 @@ impl App {
     }
   }
 
-  fn ensure_item(&mut self, tab_index: usize, target_index: usize) -> Result {
-    loop {
-      let needs_more = if let Some(tab) = self.tabs.get(tab_index) {
-        target_index >= tab.items.len() && tab.has_more
-      } else {
-        false
-      };
+  fn handle_list_key(&mut self, key: KeyEvent) -> Result<bool> {
+    let modifiers = key.modifiers;
 
-      if !needs_more {
-        return Ok(());
+    match key.code {
+      KeyCode::Char('q' | 'Q') | KeyCode::Esc => Ok(true),
+      KeyCode::Char('?') => {
+        self.show_help();
+        Ok(false)
       }
+      KeyCode::Left | KeyCode::Char('h') => {
+        if !self.tabs.is_empty() {
+          self.active_tab =
+            (self.active_tab + self.tabs.len() - 1) % self.tabs.len();
+        }
 
-      if !self.load_more_for_tab(tab_index)? {
-        return Ok(());
+        Ok(false)
       }
+      KeyCode::Right | KeyCode::Char('l') => {
+        if !self.tabs.is_empty() {
+          self.active_tab = (self.active_tab + 1) % self.tabs.len();
+        }
+
+        Ok(false)
+      }
+      KeyCode::Down | KeyCode::Char('j') => {
+        self.select_next()?;
+        Ok(false)
+      }
+      KeyCode::Up | KeyCode::Char('k') => {
+        self.select_previous()?;
+        Ok(false)
+      }
+      KeyCode::PageDown => {
+        self.page_down()?;
+        Ok(false)
+      }
+      KeyCode::PageUp => {
+        self.page_up()?;
+        Ok(false)
+      }
+      KeyCode::Char('d') if modifiers.contains(KeyModifiers::CONTROL) => {
+        self.page_down()?;
+        Ok(false)
+      }
+      KeyCode::Char('u') if modifiers.contains(KeyModifiers::CONTROL) => {
+        self.page_up()?;
+        Ok(false)
+      }
+      KeyCode::Home => {
+        self.select_index(0)?;
+        Ok(false)
+      }
+      KeyCode::End => {
+        if let Some(tab) = self.tabs.get_mut(self.active_tab)
+          && !tab.items.is_empty()
+        {
+          tab.selected = tab.items.len() - 1;
+        }
+
+        Ok(false)
+      }
+      KeyCode::Enter => {
+        self.open_comments()?;
+        Ok(false)
+      }
+      KeyCode::Char('o' | 'O') => {
+        self.open_current_in_browser();
+        Ok(false)
+      }
+      _ => Ok(false),
     }
   }
 
@@ -884,27 +879,16 @@ impl App {
     Ok(false)
   }
 
-  fn current_entry(&self) -> Option<&Entry> {
-    self.tabs.get(self.active_tab).and_then(|tab| {
-      if tab.items.is_empty() {
-        None
-      } else {
-        let index = tab.selected.min(tab.items.len().saturating_sub(1));
-        tab.items.get(index)
-      }
-    })
-  }
-
-  fn open_current_in_browser(&mut self) {
-    if let Some(entry) = self.current_entry() {
-      match entry.open() {
-        Ok(link) => {
-          self.message = format!("Opened in browser: {}", truncate(&link, 80));
-        }
-        Err(err) => {
-          self.message = format!("Could not open selection: {err}");
-        }
-      }
+  pub(crate) fn new(client: Client, tabs: Vec<TabData>) -> Self {
+    Self {
+      active_tab: 0,
+      client,
+      list_height: 0,
+      message: DEFAULT_STATUS.into(),
+      message_backup: None,
+      mode: Mode::List,
+      show_help: false,
+      tabs,
     }
   }
 
@@ -969,41 +953,32 @@ impl App {
 
     self.mode = Mode::Comments(view);
 
-    if !self.show_help {
-      if let Mode::Comments(view) = &self.mode {
-        let title_snippet = truncate(view.title(), 40);
+    if !self.show_help
+      && let Mode::Comments(view) = &self.mode
+    {
+      let title_snippet = truncate(view.title(), 40);
 
-        let prefix = if view.is_empty() {
-          format!("No comments yet for {}", title_snippet)
-        } else {
-          format!("Comments for {}", title_snippet)
-        };
+      let prefix = if view.is_empty() {
+        format!("No comments yet for {title_snippet}")
+      } else {
+        format!("Comments for {title_snippet}")
+      };
 
-        self.message = format!("{prefix} — {COMMENTS_STATUS}");
-      }
+      self.message = format!("{prefix} — {COMMENTS_STATUS}");
     }
 
     Ok(())
   }
-
-  fn close_comments(&mut self) {
-    self.mode = Mode::List;
-
-    if !self.show_help {
-      self.message = DEFAULT_STATUS.into();
-    }
-  }
-
-  pub(crate) fn new(client: Client, tabs: Vec<TabData>) -> Self {
-    Self {
-      active_tab: 0,
-      client,
-      list_height: 0,
-      message: DEFAULT_STATUS.into(),
-      message_backup: None,
-      mode: Mode::List,
-      show_help: false,
-      tabs,
+  fn open_current_in_browser(&mut self) {
+    if let Some(entry) = self.current_entry() {
+      match entry.open() {
+        Ok(link) => {
+          self.message = format!("Opened in browser: {}", truncate(&link, 80));
+        }
+        Err(err) => {
+          self.message = format!("Could not open selection: {err}");
+        }
+      }
     }
   }
 
@@ -1146,6 +1121,43 @@ impl App {
       self.message_backup = Some(self.message.clone());
       self.message = HELP_STATUS.into();
       self.show_help = true;
+    }
+  }
+
+  fn wrap_text(text: &str, width: usize) -> Vec<String> {
+    if text.is_empty() {
+      return Vec::new();
+    }
+
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    let mut current_width = 0;
+
+    for word in text.split_whitespace() {
+      let word_width = word.chars().count();
+
+      if current.is_empty() {
+        current.push_str(word);
+        current_width = word_width;
+      } else if current_width + 1 + word_width <= width {
+        current.push(' ');
+        current.push_str(word);
+        current_width += 1 + word_width;
+      } else {
+        lines.push(current);
+        current = word.to_string();
+        current_width = word_width;
+      }
+    }
+
+    if !current.is_empty() {
+      lines.push(current);
+    }
+
+    if lines.is_empty() {
+      vec![text.to_string()]
+    } else {
+      lines
     }
   }
 }

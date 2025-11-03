@@ -83,12 +83,12 @@ fn decode_html_entities(input: &str) -> String {
 
     let semicolon_pos = rest.find(';');
 
-    if let Some(end) = semicolon_pos {
-      if let Some(decoded) = decode_html_entity(&rest[1..end]) {
-        result.push(decoded);
-        index += end + 1;
-        continue;
-      }
+    if let Some(end) = semicolon_pos
+      && let Some(decoded) = decode_html_entity(&rest[1..end])
+    {
+      result.push(decoded);
+      index += end + 1;
+      continue;
     }
 
     // No valid entity found, keep the original '&' and advance.
@@ -108,14 +108,13 @@ fn decode_html_entity(entity: &str) -> Option<char> {
     "gt" => Some('>'),
     "nbsp" => Some(' '),
     _ => {
-      if let Some(hex) = entity.strip_prefix("#x").or_else(|| entity.strip_prefix("#X")) {
-        u32::from_str_radix(hex, 16)
-          .ok()
-          .and_then(char::from_u32)
+      if let Some(hex) = entity
+        .strip_prefix("#x")
+        .or_else(|| entity.strip_prefix("#X"))
+      {
+        u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
       } else if let Some(decimal) = entity.strip_prefix('#') {
-        u32::from_str_radix(decimal, 10)
-          .ok()
-          .and_then(char::from_u32)
+        decimal.parse::<u32>().ok().and_then(char::from_u32)
       } else {
         None
       }
