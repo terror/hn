@@ -67,9 +67,7 @@ use {
   },
   story::Story,
   tab::Tab,
-  utils::{
-    deserialize_optional_string, format_points, truncate, wrap_text,
-  },
+  utils::{deserialize_optional_string, format_points, truncate, wrap_text},
 };
 
 const INITIAL_BATCH_SIZE: usize = 30;
