@@ -805,11 +805,30 @@ impl App {
   }
 
   fn help_area(area: Rect) -> Rect {
-    let max_width = area.width.max(1);
-    let max_height = area.height.max(1);
+    fn saturating_usize_to_u16(value: usize) -> u16 {
+      u16::try_from(value).unwrap_or(u16::MAX)
+    }
 
-    let width = area.width.saturating_sub(4).clamp(1, max_width.min(68));
-    let height = area.height.saturating_sub(4).clamp(1, max_height.min(18));
+    let (line_count, max_line_width) =
+      HELP_TEXT
+        .lines()
+        .fold((0usize, 0usize), |(count, width), line| {
+          let updated_count = count.saturating_add(1);
+          let line_width = line.chars().count();
+
+          (updated_count, width.max(line_width))
+        });
+
+    let desired_width =
+      saturating_usize_to_u16(max_line_width.saturating_add(2)).max(1);
+    let desired_height =
+      saturating_usize_to_u16(line_count.saturating_add(2)).max(1);
+
+    let available_width = area.width.saturating_sub(2).max(1);
+    let available_height = area.height.saturating_sub(2).max(1);
+
+    let width = available_width.clamp(1, desired_width).min(area.width);
+    let height = available_height.clamp(1, desired_height).min(area.height);
 
     let x = area.x + (area.width.saturating_sub(width)) / 2;
     let y = area.y + (area.height.saturating_sub(height)) / 2;

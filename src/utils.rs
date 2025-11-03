@@ -59,67 +59,9 @@ pub(crate) fn sanitize_comment(text: &str) -> String {
     }
   }
 
-  let decoded = decode_html_entities(cleaned.trim());
+  let decoded = html_escape::decode_html_entities(cleaned.trim());
 
   decoded.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-fn decode_html_entities(input: &str) -> String {
-  let mut result = String::with_capacity(input.len());
-  let mut index = 0;
-
-  while index < input.len() {
-    let rest = &input[index..];
-
-    if let Some(next_char) = rest.chars().next() {
-      if next_char != '&' {
-        result.push(next_char);
-        index += next_char.len_utf8();
-        continue;
-      }
-    } else {
-      break;
-    }
-
-    let semicolon_pos = rest.find(';');
-
-    if let Some(end) = semicolon_pos
-      && let Some(decoded) = decode_html_entity(&rest[1..end])
-    {
-      result.push(decoded);
-      index += end + 1;
-      continue;
-    }
-
-    // No valid entity found, keep the original '&' and advance.
-    result.push('&');
-    index += 1;
-  }
-
-  result
-}
-
-fn decode_html_entity(entity: &str) -> Option<char> {
-  match entity {
-    "quot" => Some('"'),
-    "amp" => Some('&'),
-    "apos" => Some('\''),
-    "lt" => Some('<'),
-    "gt" => Some('>'),
-    "nbsp" => Some(' '),
-    _ => {
-      if let Some(hex) = entity
-        .strip_prefix("#x")
-        .or_else(|| entity.strip_prefix("#X"))
-      {
-        u32::from_str_radix(hex, 16).ok().and_then(char::from_u32)
-      } else if let Some(decimal) = entity.strip_prefix('#') {
-        decimal.parse::<u32>().ok().and_then(char::from_u32)
-      } else {
-        None
-      }
-    }
-  }
 }
 
 pub(crate) fn truncate(text: &str, max_chars: usize) -> String {

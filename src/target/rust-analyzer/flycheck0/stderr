@@ -1,0 +1,107 @@
+   0.067338708s  INFO prepare_target{force=false package_id=hn v0.1.0 (/Users/liam/src/hn) target="hn"}: cargo::core::compiler::fingerprint: fingerprint error for hn v0.1.0 (/Users/liam/src/hn)/Check { test: false }/TargetInner { name: "hn", doc: true, ..: with_path("/Users/liam/src/hn/src/main.rs", Edition2024) }
+   0.067359833s  INFO prepare_target{force=false package_id=hn v0.1.0 (/Users/liam/src/hn) target="hn"}: cargo::core::compiler::fingerprint:     err: failed to read `/Users/liam/src/hn/target/debug/.fingerprint/hn-8592d5f576eb6321/bin-hn`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: std::backtrace::Backtrace::create
+   1: std::backtrace::Backtrace::capture
+   2: cargo_util::paths::read_bytes
+   3: cargo_util::paths::read
+   4: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   5: cargo::core::compiler::fingerprint::prepare_target
+   6: cargo::core::compiler::compile
+   7: <cargo::core::compiler::build_runner::BuildRunner>::compile
+   8: cargo::ops::cargo_compile::compile_ws
+   9: cargo::ops::cargo_compile::compile_with_exec
+  10: cargo::ops::cargo_compile::compile
+  11: cargo::commands::check::exec
+  12: <cargo::cli::Exec>::exec
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  15: std::rt::lang_start::<()>::{closure#0}
+  16: std::rt::lang_start_internal
+  17: _main
+   0.085163833s  INFO prepare_target{force=false package_id=html-escape v0.2.13 target="html_escape"}: cargo::core::compiler::fingerprint: fingerprint error for html-escape v0.2.13/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("html_escape", ["lib"], "/Users/liam/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/html-escape-0.2.13/src/lib.rs", Edition2021) }
+   0.085355000s  INFO prepare_target{force=false package_id=html-escape v0.2.13 target="html_escape"}: cargo::core::compiler::fingerprint:     err: failed to read `/Users/liam/src/hn/target/debug/.fingerprint/html-escape-bb1a73581e680864/lib-html_escape`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: std::backtrace::Backtrace::create
+   1: std::backtrace::Backtrace::capture
+   2: cargo_util::paths::read_bytes
+   3: cargo_util::paths::read
+   4: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   5: cargo::core::compiler::fingerprint::prepare_target
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::compile
+   8: <cargo::core::compiler::build_runner::BuildRunner>::compile
+   9: cargo::ops::cargo_compile::compile_ws
+  10: cargo::ops::cargo_compile::compile_with_exec
+  11: cargo::ops::cargo_compile::compile
+  12: cargo::commands::check::exec
+  13: <cargo::cli::Exec>::exec
+  14: cargo::main
+  15: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  16: std::rt::lang_start::<()>::{closure#0}
+  17: std::rt::lang_start_internal
+  18: _main
+   0.085804167s  INFO prepare_target{force=false package_id=utf8-width v0.1.7 target="utf8_width"}: cargo::core::compiler::fingerprint: fingerprint error for utf8-width v0.1.7/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("utf8_width", ["lib"], "/Users/liam/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/utf8-width-0.1.7/src/lib.rs", Edition2021) }
+   0.085809542s  INFO prepare_target{force=false package_id=utf8-width v0.1.7 target="utf8_width"}: cargo::core::compiler::fingerprint:     err: failed to read `/Users/liam/src/hn/target/debug/.fingerprint/utf8-width-dd9a150f40f1651c/lib-utf8_width`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: std::backtrace::Backtrace::create
+   1: std::backtrace::Backtrace::capture
+   2: cargo_util::paths::read_bytes
+   3: cargo_util::paths::read
+   4: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   5: cargo::core::compiler::fingerprint::prepare_target
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::compile
+   8: cargo::core::compiler::compile
+   9: <cargo::core::compiler::build_runner::BuildRunner>::compile
+  10: cargo::ops::cargo_compile::compile_ws
+  11: cargo::ops::cargo_compile::compile_with_exec
+  12: cargo::ops::cargo_compile::compile
+  13: cargo::commands::check::exec
+  14: <cargo::cli::Exec>::exec
+  15: cargo::main
+  16: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  17: std::rt::lang_start::<()>::{closure#0}
+  18: std::rt::lang_start_internal
+  19: _main
+   0.089452292s  INFO prepare_target{force=false package_id=hn v0.1.0 (/Users/liam/src/hn) target="hn"}: cargo::core::compiler::fingerprint: fingerprint error for hn v0.1.0 (/Users/liam/src/hn)/Check { test: true }/TargetInner { name: "hn", doc: true, ..: with_path("/Users/liam/src/hn/src/main.rs", Edition2024) }
+   0.089458125s  INFO prepare_target{force=false package_id=hn v0.1.0 (/Users/liam/src/hn) target="hn"}: cargo::core::compiler::fingerprint:     err: failed to read `/Users/liam/src/hn/target/debug/.fingerprint/hn-77d0741128072936/test-bin-hn`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: std::backtrace::Backtrace::create
+   1: std::backtrace::Backtrace::capture
+   2: cargo_util::paths::read_bytes
+   3: cargo_util::paths::read
+   4: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   5: cargo::core::compiler::fingerprint::prepare_target
+   6: cargo::core::compiler::compile
+   7: <cargo::core::compiler::build_runner::BuildRunner>::compile
+   8: cargo::ops::cargo_compile::compile_ws
+   9: cargo::ops::cargo_compile::compile_with_exec
+  10: cargo::ops::cargo_compile::compile
+  11: cargo::commands::check::exec
+  12: <cargo::cli::Exec>::exec
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  15: std::rt::lang_start::<()>::{closure#0}
+  16: std::rt::lang_start_internal
+  17: _main
+    Checking utf8-width v0.1.7
+    Checking html-escape v0.2.13
+    Checking hn v0.1.0 (/Users/liam/src/hn)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.61s
