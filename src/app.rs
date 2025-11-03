@@ -982,6 +982,7 @@ impl App {
 
     Ok(())
   }
+
   fn open_current_in_browser(&mut self) {
     if let Some(entry) = self.current_entry() {
       match entry.open() {
