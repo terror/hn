@@ -1,4 +1,4 @@
-use super::*;
+use super::{action::Action, *};
 
 const DEFAULT_STATUS: &str =
   "↑/k up • ↓/j down • enter comments • o open link • q/esc quit • ? help";
@@ -288,163 +288,90 @@ impl App {
     }
   }
 
-  fn handle_comment_key(&mut self, key: KeyEvent) -> Result<bool> {
-    let modifiers = key.modifiers;
-    let page = self.list_height.max(1);
-
+  fn handle_help_key(&mut self, key: KeyEvent) -> Action {
     match key.code {
-      KeyCode::Char('q' | 'Q') => Ok(true),
-      KeyCode::Esc => {
-        self.close_comments();
-        Ok(false)
-      }
-      KeyCode::Char('?') => {
-        self.show_help();
-        Ok(false)
-      }
-      KeyCode::Char('o' | 'O') => {
-        self.open_comment_link();
-        Ok(false)
-      }
-      _ => {
-        if let Mode::Comments(view) = &mut self.mode {
-          match key.code {
-            KeyCode::Down | KeyCode::Char('j') => {
-              view.select_next();
-              Ok(false)
-            }
-            KeyCode::Up | KeyCode::Char('k') => {
-              view.select_previous();
-              Ok(false)
-            }
-            KeyCode::PageDown => {
-              view.page_down(page);
-              Ok(false)
-            }
-            KeyCode::PageUp => {
-              view.page_up(page);
-              Ok(false)
-            }
-            KeyCode::Char('d') if modifiers.contains(KeyModifiers::CONTROL) => {
-              view.page_down(page);
-              Ok(false)
-            }
-            KeyCode::Char('u') if modifiers.contains(KeyModifiers::CONTROL) => {
-              view.page_up(page);
-              Ok(false)
-            }
-            KeyCode::Left | KeyCode::Char('h') => {
-              view.collapse_selected();
-              Ok(false)
-            }
-            KeyCode::Right | KeyCode::Char('l') => {
-              view.expand_selected();
-              Ok(false)
-            }
-            KeyCode::Enter | KeyCode::Char(' ') => {
-              view.toggle_selected();
-              Ok(false)
-            }
-            KeyCode::Home => {
-              view.select_index_at(0);
-              Ok(false)
-            }
-            KeyCode::End => {
-              let (visible, _) = view.visible_with_selection();
-
-              if !visible.is_empty() {
-                view.select_index_at(visible.len().saturating_sub(1));
-              }
-
-              Ok(false)
-            }
-            _ => Ok(false),
-          }
-        } else {
-          Ok(false)
-        }
-      }
+      KeyCode::Char('?') | KeyCode::Esc => Action::HideHelp,
+      KeyCode::Char('q' | 'Q') => Action::Quit,
+      _ => Action::None,
     }
   }
 
-  fn handle_list_key(&mut self, key: KeyEvent) -> Result<bool> {
-    let modifiers = key.modifiers;
-
-    match key.code {
-      KeyCode::Char('q' | 'Q') | KeyCode::Esc => Ok(true),
-      KeyCode::Char('?') => {
+  fn perform_action(&mut self, action: Action) -> Result<bool> {
+    match action {
+      Action::Quit => Ok(true),
+      Action::ShowHelp => {
         self.show_help();
         Ok(false)
       }
-      KeyCode::Left | KeyCode::Char('h') => {
-        let tab_count = self.tabs.len();
-
-        if tab_count != 0 {
-          self.store_active_list_view();
-          self.active_tab = (self.active_tab + tab_count - 1) % tab_count;
-          self.restore_active_list_view();
-        }
-
+      Action::HideHelp => {
+        self.hide_help();
         Ok(false)
       }
-      KeyCode::Right | KeyCode::Char('l') => {
-        let tab_count = self.tabs.len();
-
-        if tab_count != 0 {
-          self.store_active_list_view();
-          self.active_tab = (self.active_tab + 1) % tab_count;
-          self.restore_active_list_view();
-        }
-
+      Action::SwitchTabLeft => {
+        self.switch_tab_left();
         Ok(false)
       }
-      KeyCode::Down | KeyCode::Char('j') => {
+      Action::SwitchTabRight => {
+        self.switch_tab_right();
+        Ok(false)
+      }
+      Action::SelectNext => {
         self.select_next()?;
         Ok(false)
       }
-      KeyCode::Up | KeyCode::Char('k') => {
+      Action::SelectPrevious => {
         self.select_previous()?;
         Ok(false)
       }
-      KeyCode::PageDown => {
+      Action::PageDown => {
         self.page_down()?;
         Ok(false)
       }
-      KeyCode::PageUp => {
+      Action::PageUp => {
         self.page_up()?;
         Ok(false)
       }
-      KeyCode::Char('d') if modifiers.contains(KeyModifiers::CONTROL) => {
-        self.page_down()?;
-        Ok(false)
-      }
-      KeyCode::Char('u') if modifiers.contains(KeyModifiers::CONTROL) => {
-        self.page_up()?;
-        Ok(false)
-      }
-      KeyCode::Home => {
+      Action::SelectFirst => {
         self.select_index(0)?;
         Ok(false)
       }
-      KeyCode::End => {
-        if let Some(list) = self.list_view_mut(self.active_tab)
-          && !list.is_empty()
-        {
-          let last = list.len().saturating_sub(1);
-          list.set_selected(last);
-        }
-
-        Ok(false)
-      }
-      KeyCode::Enter => {
+      Action::OpenComments => {
         self.open_comments()?;
         Ok(false)
       }
-      KeyCode::Char('o' | 'O') => {
+      Action::OpenCurrentInBrowser => {
         self.open_current_in_browser();
         Ok(false)
       }
-      _ => Ok(false),
+      Action::OpenCommentLink => {
+        self.open_comment_link();
+        Ok(false)
+      }
+      Action::CloseComments => {
+        self.close_comments();
+        Ok(false)
+      }
+      Action::None => Ok(false),
+    }
+  }
+
+  fn switch_tab_left(&mut self) {
+    let tab_count = self.tabs.len();
+
+    if tab_count != 0 {
+      self.store_active_list_view();
+      self.active_tab = (self.active_tab + tab_count - 1) % tab_count;
+      self.restore_active_list_view();
+    }
+  }
+
+  fn switch_tab_right(&mut self) {
+    let tab_count = self.tabs.len();
+
+    if tab_count != 0 {
+      self.store_active_list_view();
+      self.active_tab = (self.active_tab + 1) % tab_count;
+      self.restore_active_list_view();
     }
   }
 
@@ -767,22 +694,13 @@ impl App {
         continue;
       }
 
-      let action: Result<bool> = if self.show_help {
-        match key.code {
-          KeyCode::Char('?') | KeyCode::Esc => {
-            self.hide_help();
-            Ok(false)
-          }
-          KeyCode::Char('q' | 'Q') => Ok(true),
-          _ => Ok(false),
-        }
-      } else if matches!(self.mode, Mode::List(_)) {
-        self.handle_list_key(key)
+      let action = if self.show_help {
+        self.handle_help_key(key)
       } else {
-        self.handle_comment_key(key)
+        self.mode.handle_key(key, self.list_height.max(1))
       };
 
-      match action {
+      match self.perform_action(action) {
         Ok(true) => break,
         Ok(false) => {}
         Err(error) => {
