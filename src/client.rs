@@ -1,9 +1,5 @@
 use {super::*, anyhow::Context};
 
-use crate::comment::{Comment, CommentThread};
-
-use serde::Deserialize;
-
 #[derive(Clone)]
 pub(crate) struct Client {
   client: reqwest::Client,
@@ -214,7 +210,7 @@ impl Client {
     })
   }
 
-  pub(crate) async fn load_tabs(&self, limit: usize) -> Result<Vec<TabData>> {
+  pub(crate) async fn load_tabs(&self, limit: usize) -> Result<Vec<Tab>> {
     let tasks = Category::all().iter().map(|category| {
       let client = self.clone();
 
@@ -228,7 +224,7 @@ impl Client {
             format!("failed to load {} entries", category.label)
           })?;
 
-        Ok(TabData {
+        Ok(Tab {
           category,
           has_more: entries.len() == limit,
           items: entries,
@@ -246,17 +242,4 @@ impl Client {
 
     Ok(tabs)
   }
-}
-
-#[derive(Debug, Deserialize)]
-struct Item {
-  by: Option<String>,
-  dead: Option<bool>,
-  deleted: Option<bool>,
-  id: u64,
-  kids: Option<Vec<u64>>,
-  text: Option<String>,
-  title: Option<String>,
-  r#type: Option<String>,
-  url: Option<String>,
 }

@@ -1,14 +1,5 @@
 use super::*;
 
-use {
-  crate::{
-    comment::{Comment, CommentThread},
-    utils::wrap_text,
-  },
-  crossterm::event::KeyEvent,
-  std::convert::TryFrom,
-};
-
 const DEFAULT_STATUS: &str =
   "↑/k up • ↓/j down • enter comments • o open link • q/esc quit • ? help";
 
@@ -63,7 +54,7 @@ pub(crate) struct App {
   message_backup: Option<String>,
   mode: Mode,
   show_help: bool,
-  tabs: Vec<TabData>,
+  tabs: Vec<Tab>,
 }
 
 enum Mode {
@@ -901,7 +892,7 @@ impl App {
     Ok(false)
   }
 
-  pub(crate) fn new(client: Client, tabs: Vec<TabData>) -> Self {
+  pub(crate) fn new(client: Client, tabs: Vec<Tab>) -> Self {
     Self {
       active_tab: 0,
       client,

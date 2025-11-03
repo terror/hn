@@ -27,6 +27,13 @@ where
   }
 }
 
+pub(crate) fn format_points(score: u64) -> String {
+  match score {
+    1 => "1 point".to_string(),
+    _ => format!("{score} points"),
+  }
+}
+
 pub(crate) fn sanitize_comment(text: &str) -> String {
   let mut cleaned = String::with_capacity(text.len());
   let mut inside_tag = false;
@@ -117,13 +124,6 @@ pub(crate) fn wrap_text(text: &str, width: usize) -> Vec<String> {
     vec![text.to_string()]
   } else {
     lines
-  }
-}
-
-pub(crate) fn format_points(score: u64) -> String {
-  match score {
-    1 => "1 point".to_string(),
-    _ => format!("{score} points"),
   }
 }
 

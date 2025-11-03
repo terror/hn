@@ -2,16 +2,25 @@ mod app;
 mod category;
 mod client;
 mod comment;
+mod comment_hit;
+mod comment_response;
+mod comment_thread;
 mod entry;
+mod item;
 mod story;
+mod tab;
 mod utils;
 
 use {
   app::App,
   category::{Category, CategoryKind},
   client::Client,
+  comment::Comment,
+  comment_hit::CommentHit,
+  comment_response::CommentResponse,
+  comment_thread::CommentThread,
   crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind, KeyModifiers},
+    event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     execute,
     terminal::{
       EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
@@ -23,6 +32,7 @@ use {
     future::join_all,
     stream::{self, StreamExt},
   },
+  item::Item,
   ratatui::{
     Frame, Terminal,
     backend::CrosstermBackend,
@@ -45,36 +55,11 @@ use {
     time::Duration,
   },
   story::Story,
-  utils::{deserialize_optional_string, truncate},
+  tab::Tab,
+  utils::{deserialize_optional_string, truncate, wrap_text},
 };
 
 const INITIAL_BATCH: usize = 30;
-
-#[derive(Debug, Deserialize)]
-struct CommentResponse {
-  hits: Vec<CommentHit>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CommentHit {
-  author: Option<String>,
-  comment_text: Option<String>,
-  #[serde(rename = "objectID")]
-  object_id: String,
-  #[serde(deserialize_with = "deserialize_optional_string")]
-  story_id: Option<String>,
-  story_title: Option<String>,
-  story_url: Option<String>,
-}
-
-struct TabData {
-  category: Category,
-  has_more: bool,
-  items: Vec<Entry>,
-  label: &'static str,
-  offset: usize,
-  selected: usize,
-}
 
 type Result<T = (), E = anyhow::Error> = std::result::Result<T, E>;
 
