@@ -18,4 +18,5 @@ pub(crate) enum Command {
   SubmitSearch,
   SwitchTabLeft,
   SwitchTabRight,
+  ToggleBookmark,
 }

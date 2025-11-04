@@ -1,3 +1,5 @@
+use super::*;
+
 pub(crate) struct CommentEntry {
   pub(crate) author: Option<String>,
   pub(crate) body: String,
@@ -6,6 +8,7 @@ pub(crate) struct CommentEntry {
   pub(crate) deleted: bool,
   pub(crate) depth: usize,
   pub(crate) expanded: bool,
+  pub(crate) id: u64,
   pub(crate) parent: Option<usize>,
 }
 
@@ -25,6 +28,45 @@ impl CommentEntry {
       (true, _) => format!("{author} (deleted)"),
       (_, true) => format!("{author} (dead)"),
       _ => author.to_string(),
+    }
+  }
+
+  pub(crate) fn to_bookmark_entry(&self) -> ListEntry {
+    let author = self.author.as_deref().unwrap_or("unknown");
+    let title = format!("Comment by {author}");
+
+    let mut snippet = String::new();
+    let mut char_count: usize = 0;
+
+    for word in self.body().split_whitespace() {
+      if !snippet.is_empty() {
+        snippet.push(' ');
+        char_count = char_count.saturating_add(1);
+      }
+
+      snippet.push_str(word);
+      char_count = char_count.saturating_add(word.chars().count());
+
+      if char_count >= 120 {
+        break;
+      }
+    }
+
+    let detail = {
+      let trimmed = snippet.trim();
+
+      if trimmed.is_empty() {
+        None
+      } else {
+        Some(truncate(trimmed, 120))
+      }
+    };
+
+    ListEntry {
+      detail,
+      id: self.id.to_string(),
+      title,
+      url: Some(format!("https://news.ycombinator.com/item?id={}", self.id)),
     }
   }
 }

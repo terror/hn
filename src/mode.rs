@@ -27,6 +27,7 @@ impl Mode {
             Command::PageUp
           }
           KeyCode::Char('/') => Command::StartSearch,
+          KeyCode::Char('b' | 'B') => Command::ToggleBookmark,
           KeyCode::Home => Command::SelectFirst,
           KeyCode::End => {
             if !view.is_empty() {
@@ -90,6 +91,7 @@ impl Mode {
             view.select_index_at(0);
             Command::None
           }
+          KeyCode::Char('b' | 'B') => Command::ToggleBookmark,
           KeyCode::End => {
             let (visible, _) = view.visible_with_selection();
 

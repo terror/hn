@@ -1,5 +1,6 @@
 #[derive(Clone, Copy)]
 pub enum CategoryKind {
+  Bookmarks,
   Comments,
   Search,
   Stories(&'static str),
@@ -10,6 +11,11 @@ pub struct Category {
   pub kind: CategoryKind,
   pub label: &'static str,
 }
+
+pub const BOOKMARKS_CATEGORY: Category = Category {
+  label: "bookmarks",
+  kind: CategoryKind::Bookmarks,
+};
 
 impl Category {
   pub fn all() -> &'static [Category] {

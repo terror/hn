@@ -1,5 +1,8 @@
 use super::*;
 
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct ListEntry {
   pub(crate) detail: Option<String>,
   pub(crate) id: String,
