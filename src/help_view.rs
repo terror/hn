@@ -93,7 +93,9 @@ impl HelpView {
     }
 
     self.message_backup = Some(message.clone());
+
     *message = HELP_STATUS.into();
+
     self.visible = true;
   }
 }
