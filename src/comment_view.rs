@@ -178,6 +178,7 @@ impl CommentView {
       deleted,
       depth,
       expanded: true,
+      id,
       parent,
     });
 
@@ -246,6 +247,10 @@ impl CommentView {
     let previous = current.saturating_sub(1);
 
     self.selected = Some(visible[previous]);
+  }
+
+  pub(crate) fn selected_entry(&self) -> Option<&CommentEntry> {
+    self.selected.and_then(|idx| self.entries.get(idx))
   }
 
   pub(crate) fn toggle_selected(&mut self) {

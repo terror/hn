@@ -1,4 +1,5 @@
 mod app;
+mod bookmark;
 mod category;
 mod client;
 mod command;
@@ -28,6 +29,7 @@ mod utils;
 use {
   anyhow::Context,
   app::App,
+  bookmark::Bookmarks,
   category::{Category, CategoryKind},
   client::Client,
   command::Command,
@@ -82,7 +84,10 @@ use {
   serde_json::Value,
   std::{
     backtrace::BacktraceStatus,
+    collections::HashSet,
+    env, fs,
     io::{self, Stdout},
+    path::{Path, PathBuf},
     process,
     string::String,
     time::Duration,
@@ -100,11 +105,9 @@ use {
 
 const INITIAL_BATCH_SIZE: usize = 30;
 
-const LIST_STATUS: &str =
-  "↑/k up • ↓/j down • enter comments • o open link • q/esc quit • ? help";
+const LIST_STATUS: &str = "↑/k up • ↓/j down • enter comments • o open link • b bookmark • q/esc quit • ? help";
 
-const COMMENTS_STATUS: &str =
-  "↑/k up • ↓/j down • ←/h collapse • →/l expand • enter toggle • esc back";
+const COMMENTS_STATUS: &str = "↑/k up • ↓/j down • ←/h collapse • →/l expand • enter toggle • b bookmark • esc back";
 
 const HELP_TITLE: &str = "Help";
 const HELP_STATUS: &str = "Press ? or esc to close help";
@@ -131,6 +134,7 @@ Navigation:
 Actions:
   enter   view comments for the selected item
   o       open the selected item in your browser
+  b       toggle a bookmark for the selected item
   /       start a search (type to edit, enter to submit)
   q       quit hn
   esc     close help or quit from the list
@@ -145,6 +149,7 @@ Comments:
   ← / h   collapse or go to parent
   → / l   expand or go to first child
   enter   toggle collapse or expand
+  b       toggle a bookmark for the selected comment
   esc     return to the story list
 ";
 
@@ -176,9 +181,11 @@ async fn run() -> Result {
 
   let tabs = client.load_tabs(INITIAL_BATCH_SIZE).await?;
 
+  let bookmarks = Bookmarks::load().context("could not load bookmarks")?;
+
   let mut terminal = initialize_terminal()?;
 
-  let mut app = App::new(client, tabs);
+  let mut app = App::new(client, tabs, bookmarks);
 
   app.run(&mut terminal)?;
 

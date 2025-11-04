@@ -1,5 +1,6 @@
 #[derive(Clone, Copy)]
 pub enum CategoryKind {
+  Bookmarks,
   Comments,
   Search,
   Stories(&'static str),

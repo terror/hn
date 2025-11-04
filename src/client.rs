@@ -61,8 +61,8 @@ impl Client {
         .into_iter()
         .map(ListEntry::from)
         .collect(),
+      CategoryKind::Bookmarks | CategoryKind::Search => Vec::new(),
       CategoryKind::Comments => self.fetch_comments(offset, count).await?,
-      CategoryKind::Search => Vec::new(),
     })
   }
 
