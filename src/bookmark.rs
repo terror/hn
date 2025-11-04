@@ -1,11 +1,5 @@
 use super::*;
 
-use std::{
-  collections::HashSet,
-  env, fs,
-  path::{Path, PathBuf},
-};
-
 #[derive(Debug)]
 pub(crate) struct Bookmarks {
   entries: Vec<ListEntry>,

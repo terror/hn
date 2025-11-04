@@ -84,7 +84,10 @@ use {
   serde_json::Value,
   std::{
     backtrace::BacktraceStatus,
+    collections::HashSet,
+    env, fs,
     io::{self, Stdout},
+    path::{Path, PathBuf},
     process,
     string::String,
     time::Duration,
