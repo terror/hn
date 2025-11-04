@@ -22,6 +22,7 @@ pub(crate) struct App {
   tab_loading: Vec<bool>,
   tab_views: Vec<Option<ListView<ListEntry>>>,
   tabs: Vec<Tab>,
+  transient_message: Option<TransientMessage>,
 }
 
 impl App {
@@ -409,7 +410,10 @@ impl App {
       }
       Effect::OpenUrl { url } => match webbrowser::open(&url) {
         Ok(()) => {
-          self.message = format!("Opened in browser: {}", truncate(&url, 80));
+          self.set_transient_message(format!(
+            "Opened in browser: {}",
+            truncate(&url, 80)
+          ));
         }
         Err(error) => {
           self.message = format!("Could not open link: {error}");
@@ -531,6 +535,7 @@ impl App {
       tab_loading,
       tab_views,
       tabs: tab_meta,
+      transient_message: None,
     };
 
     if !app.bookmarks.is_empty() {
@@ -637,6 +642,8 @@ impl App {
   }
 
   fn process_pending_events(&mut self) {
+    self.update_transient_message();
+
     loop {
       match self.event_rx.try_recv() {
         Ok(Event::TabItems { tab_index, result }) => {
@@ -972,6 +979,18 @@ impl App {
     self.select_index(current.saturating_sub(1))
   }
 
+  fn set_transient_message(&mut self, message: String) {
+    let original = self.transient_message.as_ref().map_or_else(
+      || self.message.clone(),
+      |transient| transient.original().to_string(),
+    );
+
+    self.transient_message =
+      Some(TransientMessage::new(message.clone(), original));
+
+    self.message = message;
+  }
+
   fn start_load_for_tab(&mut self, tab_index: usize) -> Result {
     let (category, offset) = if let Some(tab) = self.tabs.get(tab_index) {
       if !tab.has_more {
@@ -1139,11 +1158,13 @@ impl App {
     if !self.help.is_visible() {
       let title = truncate(&entry.title, 40);
 
-      self.message = if added {
+      let message = if added {
         format!("Bookmarked \"{title}\"")
       } else {
         format!("Removed bookmark for \"{title}\"")
       };
+
+      self.set_transient_message(message);
     }
 
     Ok(())
@@ -1161,11 +1182,13 @@ impl App {
     if !self.help.is_visible() {
       let title = truncate(&entry.title, 40);
 
-      self.message = if added {
+      let message = if added {
         format!("Bookmarked \"{title}\"")
       } else {
         format!("Removed bookmark for \"{title}\"")
       };
+
+      self.set_transient_message(message);
     }
 
     Ok(())
@@ -1175,6 +1198,17 @@ impl App {
     if let Some(input) = &self.search_input {
       let prompt = input.prompt();
       self.message = truncate(&prompt, 80);
+    }
+  }
+
+  fn update_transient_message(&mut self) {
+    if let Some(transient) = self.transient_message.clone() {
+      if self.message != transient.current() {
+        self.transient_message = None;
+      } else if transient.is_expired() {
+        self.message = transient.original().to_string();
+        self.transient_message = None;
+      }
     }
   }
 }
