@@ -28,3 +28,32 @@ impl TransientMessage {
     &self.original
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn new_sets_fields_and_expiry_three_seconds_ahead() {
+    let now = Instant::now();
+    let message = TransientMessage::new("current".into(), "original".into());
+
+    assert_eq!(message.current(), "current");
+    assert_eq!(message.original(), "original");
+
+    let remaining = message.expires_at.duration_since(now);
+    assert!(remaining >= Duration::from_secs(3));
+    assert!(remaining <= Duration::from_secs(3) + Duration::from_millis(10));
+  }
+
+  #[test]
+  fn is_expired_detects_elapsed_time() {
+    let mut message = TransientMessage::new("a".into(), "b".into());
+
+    assert!(!message.is_expired());
+
+    message.expires_at = Instant::now() - Duration::from_secs(1);
+
+    assert!(message.is_expired());
+  }
+}
