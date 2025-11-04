@@ -52,7 +52,8 @@ mod tests {
 
     assert!(!message.is_expired());
 
-    message.expires_at = Instant::now() - Duration::from_secs(1);
+    message.expires_at =
+      Instant::now().checked_sub(Duration::from_secs(1)).unwrap();
 
     assert!(message.is_expired());
   }
