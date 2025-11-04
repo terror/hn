@@ -105,19 +105,18 @@ impl Bookmarks {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-
-  use std::{
-    fs,
-    path::Path,
-    sync::atomic::{AtomicUsize, Ordering},
+  use {
+    super::*,
+    std::sync::atomic::{AtomicUsize, Ordering},
   };
 
   static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
   fn temp_bookmarks_file() -> PathBuf {
-    let unique = COUNTER.fetch_add(1, Ordering::Relaxed);
-    env::temp_dir().join(format!("hn_bookmarks_test_{unique}.json"))
+    env::temp_dir().join(format!(
+      "hn_bookmarks_test_{}.json",
+      COUNTER.fetch_add(1, Ordering::Relaxed)
+    ))
   }
 
   fn with_temp_env<F>(f: F)
@@ -155,11 +154,14 @@ mod tests {
   fn toggle_adds_and_removes_entries() {
     with_temp_env(|_| {
       let mut bookmarks = Bookmarks::load().unwrap();
+
       assert!(bookmarks.is_empty());
 
       let entry = sample_entry("1");
+
       assert!(bookmarks.toggle(&entry).unwrap());
       assert!(!bookmarks.is_empty());
+
       assert_eq!(
         bookmarks
           .entries_vec()
@@ -177,6 +179,7 @@ mod tests {
   fn remove_deletes_existing_entry() {
     with_temp_env(|path| {
       let mut bookmarks = Bookmarks::load().unwrap();
+
       let entry = sample_entry("2");
       bookmarks.toggle(&entry).unwrap();
 
