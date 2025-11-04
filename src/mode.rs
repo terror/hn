@@ -1,4 +1,4 @@
-use super::{action::Action, *};
+use super::{command::Command, *};
 
 pub(crate) enum Mode {
   Comments(CommentView),
@@ -6,87 +6,87 @@ pub(crate) enum Mode {
 }
 
 impl Mode {
-  pub(crate) fn handle_key(&mut self, key: KeyEvent, page: usize) -> Action {
+  pub(crate) fn handle_key(&mut self, key: KeyEvent, page: usize) -> Command {
     match self {
       Mode::List(view) => {
         let modifiers = key.modifiers;
 
         match key.code {
-          KeyCode::Char('q' | 'Q') | KeyCode::Esc => Action::Quit,
-          KeyCode::Char('?') => Action::ShowHelp,
-          KeyCode::Left | KeyCode::Char('h') => Action::SwitchTabLeft,
-          KeyCode::Right | KeyCode::Char('l') => Action::SwitchTabRight,
-          KeyCode::Down | KeyCode::Char('j') => Action::SelectNext,
-          KeyCode::Up | KeyCode::Char('k') => Action::SelectPrevious,
-          KeyCode::PageDown => Action::PageDown,
-          KeyCode::PageUp => Action::PageUp,
+          KeyCode::Char('q' | 'Q') | KeyCode::Esc => Command::Quit,
+          KeyCode::Char('?') => Command::ShowHelp,
+          KeyCode::Left | KeyCode::Char('h') => Command::SwitchTabLeft,
+          KeyCode::Right | KeyCode::Char('l') => Command::SwitchTabRight,
+          KeyCode::Down | KeyCode::Char('j') => Command::SelectNext,
+          KeyCode::Up | KeyCode::Char('k') => Command::SelectPrevious,
+          KeyCode::PageDown => Command::PageDown,
+          KeyCode::PageUp => Command::PageUp,
           KeyCode::Char('d') if modifiers.contains(KeyModifiers::CONTROL) => {
-            Action::PageDown
+            Command::PageDown
           }
           KeyCode::Char('u') if modifiers.contains(KeyModifiers::CONTROL) => {
-            Action::PageUp
+            Command::PageUp
           }
-          KeyCode::Home => Action::SelectFirst,
+          KeyCode::Home => Command::SelectFirst,
           KeyCode::End => {
             if !view.is_empty() {
               let last = view.len().saturating_sub(1);
               view.set_selected(last);
             }
 
-            Action::None
+            Command::None
           }
-          KeyCode::Enter => Action::OpenComments,
-          KeyCode::Char('o' | 'O') => Action::OpenCurrentInBrowser,
-          _ => Action::None,
+          KeyCode::Enter => Command::OpenComments,
+          KeyCode::Char('o' | 'O') => Command::OpenCurrentInBrowser,
+          _ => Command::None,
         }
       }
       Mode::Comments(view) => {
         let modifiers = key.modifiers;
 
         match key.code {
-          KeyCode::Char('q' | 'Q') => Action::Quit,
-          KeyCode::Esc => Action::CloseComments,
-          KeyCode::Char('?') => Action::ShowHelp,
-          KeyCode::Char('o' | 'O') => Action::OpenCommentLink,
+          KeyCode::Char('q' | 'Q') => Command::Quit,
+          KeyCode::Esc => Command::CloseComments,
+          KeyCode::Char('?') => Command::ShowHelp,
+          KeyCode::Char('o' | 'O') => Command::OpenCommentLink,
           KeyCode::Down | KeyCode::Char('j') => {
             view.select_next();
-            Action::None
+            Command::None
           }
           KeyCode::Up | KeyCode::Char('k') => {
             view.select_previous();
-            Action::None
+            Command::None
           }
           KeyCode::PageDown => {
             view.page_down(page);
-            Action::None
+            Command::None
           }
           KeyCode::PageUp => {
             view.page_up(page);
-            Action::None
+            Command::None
           }
           KeyCode::Char('d') if modifiers.contains(KeyModifiers::CONTROL) => {
             view.page_down(page);
-            Action::None
+            Command::None
           }
           KeyCode::Char('u') if modifiers.contains(KeyModifiers::CONTROL) => {
             view.page_up(page);
-            Action::None
+            Command::None
           }
           KeyCode::Left | KeyCode::Char('h') => {
             view.collapse_selected();
-            Action::None
+            Command::None
           }
           KeyCode::Right | KeyCode::Char('l') => {
             view.expand_selected();
-            Action::None
+            Command::None
           }
           KeyCode::Enter | KeyCode::Char(' ') => {
             view.toggle_selected();
-            Action::None
+            Command::None
           }
           KeyCode::Home => {
             view.select_index_at(0);
-            Action::None
+            Command::None
           }
           KeyCode::End => {
             let (visible, _) = view.visible_with_selection();
@@ -95,9 +95,9 @@ impl Mode {
               view.select_index_at(visible.len().saturating_sub(1));
             }
 
-            Action::None
+            Command::None
           }
-          _ => Action::None,
+          _ => Command::None,
         }
       }
     }

@@ -65,17 +65,13 @@ impl From<Story> for ListEntry {
 }
 
 impl ListEntry {
-  pub(crate) fn open(&self) -> Result<String, String> {
-    let link = self
+  pub(crate) fn resolved_url(&self) -> String {
+    self
       .url
       .clone()
       .filter(|url| !url.is_empty())
       .unwrap_or_else(|| {
         format!("https://news.ycombinator.com/item?id={}", self.id)
-      });
-
-    webbrowser::open(&link)
-      .map(|()| link.clone())
-      .map_err(|error| error.to_string())
+      })
   }
 }
