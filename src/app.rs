@@ -29,14 +29,6 @@ impl App {
     }
   }
 
-  fn enqueue_effect(&mut self, effect: Effect) {
-    self.pending_effects.push(effect);
-  }
-
-  fn take_pending_effects(&mut self) -> Vec<Effect> {
-    std::mem::take(&mut self.pending_effects)
-  }
-
   fn comment_list_item(entry: &CommentEntry, available_width: u16) -> ListItem {
     let depth_indent = "  ".repeat(entry.depth);
     let indent = format!("{BASE_INDENT}{depth_indent}");
@@ -85,6 +77,40 @@ impl App {
     self
       .list_view(self.active_tab)
       .and_then(|view| view.selected_item())
+  }
+
+  fn dispatch_command(&mut self, command: Command) -> Result<CommandDispatch> {
+    debug_assert!(
+      self.pending_effects.is_empty(),
+      "command dispatch should start without pending effects"
+    );
+
+    let mut should_exit = false;
+
+    match command {
+      Command::Quit => {
+        should_exit = true;
+      }
+      Command::ShowHelp => self.show_help(),
+      Command::HideHelp => self.hide_help(),
+      Command::SwitchTabLeft => self.switch_tab_left(),
+      Command::SwitchTabRight => self.switch_tab_right(),
+      Command::SelectNext => self.select_next()?,
+      Command::SelectPrevious => self.select_previous()?,
+      Command::PageDown => self.page_down()?,
+      Command::PageUp => self.page_up()?,
+      Command::SelectFirst => self.select_index(0)?,
+      Command::OpenComments => self.open_comments()?,
+      Command::OpenCurrentInBrowser => self.open_current_in_browser(),
+      Command::OpenCommentLink => self.open_comment_link(),
+      Command::CloseComments => self.close_comments(),
+      Command::None => {}
+    }
+
+    Ok(CommandDispatch {
+      effects: self.take_pending_effects(),
+      should_exit,
+    })
   }
 
   fn draw(&mut self, frame: &mut Frame) {
@@ -224,6 +250,10 @@ impl App {
     }
   }
 
+  fn enqueue_effect(&mut self, effect: Effect) {
+    self.pending_effects.push(effect);
+  }
+
   fn ensure_item(&mut self, tab_index: usize, target_index: usize) -> Result {
     let current_len = self
       .list_view(tab_index)
@@ -252,6 +282,52 @@ impl App {
     }
 
     Ok(())
+  }
+
+  fn execute_effect(&mut self, effect: Effect) {
+    match effect {
+      Effect::FetchComments {
+        item_id,
+        request_id,
+      } => {
+        let (client, sender) = (self.client.clone(), self.event_tx.clone());
+
+        let handle = self.handle.clone();
+
+        handle.spawn(async move {
+          let _ = sender.send(Event::CommentsLoaded {
+            request_id,
+            result: client.fetch_thread(item_id).await,
+          });
+        });
+      }
+      Effect::FetchTabItems {
+        tab_index,
+        category,
+        offset,
+      } => {
+        let (client, sender) = (self.client.clone(), self.event_tx.clone());
+
+        let handle = self.handle.clone();
+
+        handle.spawn(async move {
+          let _ = sender.send(Event::TabItemsLoaded {
+            tab_index,
+            result: client
+              .fetch_category_items(category, offset, INITIAL_BATCH_SIZE)
+              .await,
+          });
+        });
+      }
+      Effect::OpenUrl { url } => match webbrowser::open(&url) {
+        Ok(()) => {
+          self.message = format!("Opened in browser: {}", truncate(&url, 80));
+        }
+        Err(error) => {
+          self.message = format!("Could not open link: {error}");
+        }
+      },
+    }
   }
 
   fn handle_help_key(key: KeyEvent) -> Command {
@@ -472,86 +548,6 @@ impl App {
     let jump = self.page_jump();
 
     self.select_index(current.saturating_sub(jump))
-  }
-
-  fn dispatch_command(&mut self, command: Command) -> Result<CommandDispatch> {
-    debug_assert!(
-      self.pending_effects.is_empty(),
-      "command dispatch should start without pending effects"
-    );
-
-    let mut should_exit = false;
-
-    match command {
-      Command::Quit => {
-        should_exit = true;
-      }
-      Command::ShowHelp => self.show_help(),
-      Command::HideHelp => self.hide_help(),
-      Command::SwitchTabLeft => self.switch_tab_left(),
-      Command::SwitchTabRight => self.switch_tab_right(),
-      Command::SelectNext => self.select_next()?,
-      Command::SelectPrevious => self.select_previous()?,
-      Command::PageDown => self.page_down()?,
-      Command::PageUp => self.page_up()?,
-      Command::SelectFirst => self.select_index(0)?,
-      Command::OpenComments => self.open_comments()?,
-      Command::OpenCurrentInBrowser => self.open_current_in_browser(),
-      Command::OpenCommentLink => self.open_comment_link(),
-      Command::CloseComments => self.close_comments(),
-      Command::None => {}
-    }
-
-    Ok(CommandDispatch {
-      effects: self.take_pending_effects(),
-      should_exit,
-    })
-  }
-
-  fn execute_effect(&mut self, effect: Effect) {
-    match effect {
-      Effect::FetchComments {
-        item_id,
-        request_id,
-      } => {
-        let (client, sender) = (self.client.clone(), self.event_tx.clone());
-
-        let handle = self.handle.clone();
-
-        handle.spawn(async move {
-          let _ = sender.send(Event::CommentsLoaded {
-            request_id,
-            result: client.fetch_thread(item_id).await,
-          });
-        });
-      }
-      Effect::FetchTabItems {
-        tab_index,
-        category,
-        offset,
-      } => {
-        let (client, sender) = (self.client.clone(), self.event_tx.clone());
-
-        let handle = self.handle.clone();
-
-        handle.spawn(async move {
-          let _ = sender.send(Event::TabItemsLoaded {
-            tab_index,
-            result: client
-              .fetch_category_items(category, offset, INITIAL_BATCH_SIZE)
-              .await,
-          });
-        });
-      }
-      Effect::OpenUrl { url } => match webbrowser::open(&url) {
-        Ok(()) => {
-          self.message = format!("Opened in browser: {}", truncate(&url, 80));
-        }
-        Err(error) => {
-          self.message = format!("Could not open link: {error}");
-        }
-      },
-    }
   }
 
   fn process_pending_events(&mut self) {
@@ -821,5 +817,9 @@ impl App {
       self.active_tab = (self.active_tab + 1) % tab_count;
       self.restore_active_list_view();
     }
+  }
+
+  fn take_pending_effects(&mut self) -> Vec<Effect> {
+    std::mem::take(&mut self.pending_effects)
   }
 }
