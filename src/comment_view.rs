@@ -284,3 +284,86 @@ impl CommentView {
     (visible, selected_pos)
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn make_comment(id: u64, children: Vec<Comment>) -> Comment {
+    Comment {
+      author: Some(format!("user{id}")),
+      children,
+      dead: false,
+      deleted: false,
+      id,
+      text: Some(format!("comment {id}")),
+    }
+  }
+
+  fn make_view(focus: Option<u64>) -> CommentView {
+    let child = make_comment(2, Vec::new());
+
+    let parent = make_comment(1, vec![child]);
+
+    CommentView::new(
+      CommentThread {
+        focus,
+        roots: vec![parent],
+        url: None,
+      },
+      "fallback".to_string(),
+    )
+  }
+
+  #[test]
+  fn new_selects_focused_comment_when_present() {
+    let view = make_view(Some(2));
+    assert_eq!(view.selected, Some(1));
+    assert_eq!(view.link(), "fallback");
+  }
+
+  #[test]
+  fn toggle_selected_collapses_and_expands_comments() {
+    let mut view = make_view(None);
+    assert!(view.entries[0].expanded);
+
+    view.toggle_selected();
+    assert!(!view.entries[0].expanded);
+
+    view.toggle_selected();
+    assert!(view.entries[0].expanded);
+  }
+
+  #[test]
+  fn collapse_selected_moves_to_parent_when_child_selected() {
+    let mut view = make_view(None);
+    view.select_index_at(1);
+    assert_eq!(view.selected, Some(1));
+    view.collapse_selected();
+    assert_eq!(view.selected, Some(0));
+  }
+
+  #[test]
+  fn expand_selected_moves_into_first_child() {
+    let mut view = make_view(None);
+    view.expand_selected();
+    assert_eq!(view.selected, Some(1));
+  }
+
+  #[test]
+  fn ensure_selection_visible_promotes_hidden_selection() {
+    let mut view = make_view(None);
+    view.select_index_at(1);
+    view.entries[0].expanded = false;
+    view.ensure_selection_visible();
+    assert_eq!(view.selected, Some(0));
+  }
+
+  #[test]
+  fn visible_indexes_respect_collapsed_ancestors() {
+    let mut view = make_view(None);
+    assert_eq!(view.visible_indexes(), vec![0, 1]);
+    view.entries[0].expanded = false;
+    assert_eq!(view.visible_indexes(), vec![0]);
+  }
+}

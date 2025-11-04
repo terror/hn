@@ -97,3 +97,78 @@ impl ListEntry {
       })
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn from_story_uses_score_and_author_for_detail() {
+    let entry = ListEntry::from(Story {
+      by: Some("alice".to_string()),
+      id: 123,
+      score: Some(10),
+      title: "Interesting story".to_string(),
+      url: Some("https://example.com/story".to_string()),
+    });
+
+    assert_eq!(entry.title, "Interesting story");
+
+    assert_eq!(entry.detail.as_deref(), Some("10 points by alice"));
+
+    assert_eq!(entry.url.as_deref(), Some("https://example.com/story"));
+  }
+
+  #[test]
+  fn resolved_url_falls_back_to_hn_item_page() {
+    let entry = ListEntry {
+      detail: None,
+      id: "456".to_string(),
+      title: "Fallback".to_string(),
+      url: None,
+    };
+
+    assert_eq!(
+      entry.resolved_url(),
+      "https://news.ycombinator.com/item?id=456"
+    );
+  }
+
+  #[test]
+  fn from_comment_hit_prefers_story_id_link_and_builds_snippet() {
+    let entry = ListEntry::from(CommentHit {
+      author: Some("bob".to_string()),
+      comment_text: Some("Test detail".to_string()),
+      object_id: "789".to_string(),
+      story_id: Some("42".to_string()),
+      story_title: Some("Comment thread".to_string()),
+      story_url: None,
+    });
+
+    assert_eq!(entry.detail.as_deref(), Some("bob: Test detail"));
+
+    assert_eq!(
+      entry.url.as_deref(),
+      Some("https://news.ycombinator.com/item?id=42")
+    );
+
+    assert_eq!(entry.title, "Comment thread");
+  }
+
+  #[test]
+  fn from_search_hit_handles_missing_title_and_author() {
+    let entry = ListEntry::from(SearchHit {
+      author: None,
+      object_id: "s1".to_string(),
+      points: Some(5),
+      title: None,
+      url: Some("https://example.com/search".to_string()),
+    });
+
+    assert_eq!(entry.title, "Untitled");
+
+    assert_eq!(entry.detail.as_deref(), Some("5 points"));
+
+    assert_eq!(entry.url.as_deref(), Some("https://example.com/search"));
+  }
+}
