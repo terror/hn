@@ -108,7 +108,7 @@ impl App {
     }
 
     Ok(CommandDispatch {
-      effects: self.take_pending_effects(),
+      effects: std::mem::take(&mut self.pending_effects),
       should_exit,
     })
   }
@@ -813,9 +813,5 @@ impl App {
       self.active_tab = (self.active_tab + 1) % tab_count;
       self.restore_active_list_view();
     }
-  }
-
-  fn take_pending_effects(&mut self) -> Vec<Effect> {
-    std::mem::take(&mut self.pending_effects)
   }
 }
