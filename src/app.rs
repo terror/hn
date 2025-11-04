@@ -48,14 +48,37 @@ Comments:
   esc     return to the story list
 ";
 
+enum AppEvent {
+  CommentsLoaded {
+    request_id: u64,
+    result: Result<CommentThread>,
+  },
+  TabItemsLoaded {
+    tab_index: usize,
+    result: Result<Vec<ListEntry>>,
+  },
+}
+
+struct PendingComment {
+  fallback_link: String,
+  request_id: u64,
+}
+
 pub(crate) struct App {
   active_tab: usize,
   client: Client,
+  event_rx: UnboundedReceiver<AppEvent>,
+  event_tx: UnboundedSender<AppEvent>,
+  handle: Handle,
   list_height: usize,
   message: String,
   message_backup: Option<String>,
   mode: Mode,
+  next_request_id: u64,
+  pending_comment: Option<PendingComment>,
+  pending_selections: Vec<Option<usize>>,
   show_help: bool,
+  tab_loading: Vec<bool>,
   tab_views: Vec<Option<ListView<ListEntry>>>,
   tabs: Vec<Tab>,
 }
@@ -258,23 +281,33 @@ impl App {
   }
 
   fn ensure_item(&mut self, tab_index: usize, target_index: usize) -> Result {
-    loop {
-      let needs_more = if let Some(tab) = self.tabs.get(tab_index)
-        && let Some(list) = self.list_view(tab_index)
-      {
-        target_index >= list.len() && tab.has_more
-      } else {
-        false
-      };
+    let current_len = self
+      .list_view(tab_index)
+      .map_or(0, ListView::<ListEntry>::len);
 
-      if !needs_more {
-        return Ok(());
-      }
-
-      if !self.load_more_for_tab(tab_index)? {
-        return Ok(());
-      }
+    if target_index < current_len {
+      return Ok(());
     }
+
+    let Some(tab) = self.tabs.get(tab_index) else {
+      return Ok(());
+    };
+
+    if !tab.has_more {
+      return Ok(());
+    }
+
+    if let Some(slot) = self.pending_selections.get_mut(tab_index) {
+      *slot = Some(target_index);
+    }
+
+    let is_loading = self.tab_loading.get(tab_index).copied().unwrap_or(false);
+
+    if !is_loading {
+      self.start_load_for_tab(tab_index)?;
+    }
+
+    Ok(())
   }
 
   fn handle_help_key(key: KeyEvent) -> Action {
@@ -357,63 +390,6 @@ impl App {
     }
   }
 
-  fn load_more_for_tab(&mut self, tab_index: usize) -> Result<bool> {
-    let (category, offset) = if let Some(tab) = self.tabs.get(tab_index) {
-      if !tab.has_more {
-        return Ok(false);
-      }
-
-      let offset = self
-        .list_view(tab_index)
-        .map_or(0, ListView::<ListEntry>::len);
-
-      (tab.category, offset)
-    } else {
-      return Ok(false);
-    };
-
-    let previous_message = if self.show_help {
-      None
-    } else {
-      Some(self.message.clone())
-    };
-
-    if previous_message.is_some() {
-      self.message = LOADING_STATUS.into();
-    }
-
-    let client = self.client.clone();
-
-    let fetched = tokio::task::block_in_place(|| {
-      tokio::runtime::Handle::current().block_on(async move {
-        client
-          .fetch_category_items(category, offset, INITIAL_BATCH_SIZE)
-          .await
-      })
-    })?;
-
-    if let Some(message) = previous_message {
-      self.message = message;
-    }
-
-    if let Some(tab) = self.tabs.get_mut(tab_index) {
-      tab.has_more = fetched.len() >= INITIAL_BATCH_SIZE;
-    } else {
-      return Ok(false);
-    }
-
-    if fetched.is_empty() {
-      return Ok(false);
-    }
-
-    if let Some(list) = self.list_view_mut(tab_index) {
-      list.extend(fetched);
-      return Ok(true);
-    }
-
-    Ok(false)
-  }
-
   pub(crate) fn new(
     client: Client,
     tabs: Vec<(Tab, ListView<ListEntry>)>,
@@ -431,14 +407,26 @@ impl App {
       .and_then(Option::take)
       .unwrap_or_default();
 
+    let (event_tx, event_rx) = mpsc::unbounded_channel();
+    let tab_count = tab_meta.len();
+    let tab_loading = vec![false; tab_count];
+    let pending_selections = vec![None; tab_count];
+
     Self {
       active_tab: 0,
       client,
+      event_rx,
+      event_tx,
+      handle: Handle::current(),
       list_height: 0,
       message: DEFAULT_STATUS.into(),
       message_backup: None,
       mode: Mode::List(initial_view),
+      next_request_id: 0,
+      pending_comment: None,
+      pending_selections,
       show_help: false,
+      tab_loading,
       tab_views,
       tabs: tab_meta,
     }
@@ -452,8 +440,8 @@ impl App {
         Ok(()) => {
           self.message = format!("Opened in browser: {}", truncate(&link, 80));
         }
-        Err(err) => {
-          self.message = format!("Could not open link: {err}");
+        Err(error) => {
+          self.message = format!("Could not open link: {error}");
         }
       }
     }
@@ -469,8 +457,8 @@ impl App {
 
     let id = match entry_id.parse::<u64>() {
       Ok(id) => id,
-      Err(err) => {
-        self.message = format!("Could not load comments: {err}");
+      Err(error) => {
+        self.message = format!("Could not load comments: {error}");
         return Ok(());
       }
     };
@@ -479,36 +467,30 @@ impl App {
       self.message = LOADING_COMMENTS_STATUS.into();
     }
 
-    let client = self.client.clone();
-
-    let thread = tokio::task::block_in_place(|| {
-      tokio::runtime::Handle::current()
-        .block_on(async move { client.fetch_thread(id).await })
-    });
-
-    let thread = match thread {
-      Ok(thread) => thread,
-      Err(err) => {
-        self.message = format!("Could not load comments: {err}");
-        return Ok(());
-      }
-    };
-
     let fallback_link = entry_url
       .filter(|value| !value.is_empty())
       .unwrap_or_else(|| {
         format!("https://news.ycombinator.com/item?id={entry_id}")
       });
 
-    let view = CommentView::new(thread, fallback_link);
+    let request_id = self.next_request_id;
 
-    self.store_active_list_view();
+    self.next_request_id = self.next_request_id.wrapping_add(1);
 
-    self.mode = Mode::Comments(view);
+    self.pending_comment = Some(PendingComment {
+      fallback_link,
+      request_id,
+    });
 
-    if !self.show_help {
-      self.message = COMMENTS_STATUS.into();
-    }
+    let client = self.client.clone();
+    let sender = self.event_tx.clone();
+    let handle = self.handle.clone();
+
+    handle.spawn(async move {
+      let result = client.fetch_thread(id).await;
+
+      let _ = sender.send(AppEvent::CommentsLoaded { request_id, result });
+    });
 
     Ok(())
   }
@@ -519,8 +501,8 @@ impl App {
         Ok(link) => {
           self.message = format!("Opened in browser: {}", truncate(&link, 80));
         }
-        Err(err) => {
-          self.message = format!("Could not open selection: {err}");
+        Err(error) => {
+          self.message = format!("Could not open selection: {error}");
         }
       }
     }
@@ -621,6 +603,88 @@ impl App {
     }
   }
 
+  fn process_pending_events(&mut self) {
+    loop {
+      match self.event_rx.try_recv() {
+        Ok(AppEvent::TabItemsLoaded { tab_index, result }) => {
+          if let Some(flag) = self.tab_loading.get_mut(tab_index) {
+            *flag = false;
+          }
+
+          let target = self
+            .pending_selections
+            .get_mut(tab_index)
+            .and_then(Option::take);
+
+          match result {
+            Ok(entries) => {
+              if let Some(tab) = self.tabs.get_mut(tab_index) {
+                tab.has_more = entries.len() >= INITIAL_BATCH_SIZE;
+              }
+
+              if let Some(list) = self.list_view_mut(tab_index) {
+                if !entries.is_empty() {
+                  list.extend(entries);
+                }
+
+                if let Some(target) = target {
+                  if target < list.len() {
+                    list.set_selected(target);
+                  } else if !list.is_empty() {
+                    list.set_selected(list.len().saturating_sub(1));
+                  }
+                }
+              }
+
+              if !self.show_help {
+                self.message = DEFAULT_STATUS.into();
+              }
+            }
+            Err(error) => {
+              if !self.show_help {
+                self.message = format!("Could not load more entries: {error}");
+              }
+            }
+          }
+        }
+        Ok(AppEvent::CommentsLoaded { request_id, result }) => {
+          let is_current = self
+            .pending_comment
+            .as_ref()
+            .is_some_and(|pending| pending.request_id == request_id);
+
+          if !is_current {
+            continue;
+          }
+
+          let Some(pending) = self.pending_comment.take() else {
+            continue;
+          };
+
+          match result {
+            Ok(thread) => {
+              let view = CommentView::new(thread, pending.fallback_link);
+
+              self.store_active_list_view();
+
+              self.mode = Mode::Comments(view);
+
+              if !self.show_help {
+                self.message = COMMENTS_STATUS.into();
+              }
+            }
+            Err(error) => {
+              if !self.show_help {
+                self.message = format!("Could not load comments: {error}");
+              }
+            }
+          }
+        }
+        Err(TryRecvError::Empty | TryRecvError::Disconnected) => break,
+      }
+    }
+  }
+
   fn restore_active_list_view(&mut self) {
     if let Some(slot) = self.tab_views.get_mut(self.active_tab) {
       if let Some(view) = slot.take() {
@@ -638,17 +702,22 @@ impl App {
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
   ) -> Result {
     loop {
+      self.process_pending_events();
+
       terminal.draw(|frame| self.draw(frame))?;
 
       if !event::poll(Duration::from_millis(200))? {
+        self.process_pending_events();
         continue;
       }
 
       let Event::Key(key) = event::read()? else {
+        self.process_pending_events();
         continue;
       };
 
       if key.kind != KeyEventKind::Press {
+        self.process_pending_events();
         continue;
       }
 
@@ -660,9 +729,12 @@ impl App {
 
       match self.perform_action(action) {
         Ok(true) => break,
-        Ok(false) => {}
+        Ok(false) => {
+          self.process_pending_events();
+        }
         Err(error) => {
           self.message = format!("error: {error}");
+          self.process_pending_events();
         }
       }
     }
@@ -680,6 +752,10 @@ impl App {
     self.ensure_item(tab_index, target)?;
 
     if let Some(list) = self.list_view_mut(tab_index) {
+      if target >= list.len() {
+        return Ok(());
+      }
+
       list.set_selected(target);
     }
 
@@ -720,6 +796,50 @@ impl App {
       self.message = HELP_STATUS.into();
       self.show_help = true;
     }
+  }
+
+  fn start_load_for_tab(&mut self, tab_index: usize) -> Result {
+    let (category, offset) = if let Some(tab) = self.tabs.get(tab_index) {
+      if !tab.has_more {
+        return Ok(());
+      }
+
+      let offset = self
+        .list_view(tab_index)
+        .map_or(0, ListView::<ListEntry>::len);
+
+      (tab.category, offset)
+    } else {
+      return Ok(());
+    };
+
+    if let Some(flag) = self.tab_loading.get_mut(tab_index) {
+      if *flag {
+        return Ok(());
+      }
+
+      *flag = true;
+    } else {
+      return Ok(());
+    }
+
+    if !self.show_help {
+      self.message = LOADING_STATUS.into();
+    }
+
+    let client = self.client.clone();
+    let sender = self.event_tx.clone();
+    let handle = self.handle.clone();
+
+    handle.spawn(async move {
+      let result = client
+        .fetch_category_items(category, offset, INITIAL_BATCH_SIZE)
+        .await;
+
+      let _ = sender.send(AppEvent::TabItemsLoaded { tab_index, result });
+    });
+
+    Ok(())
   }
 
   fn store_active_list_view(&mut self) {
