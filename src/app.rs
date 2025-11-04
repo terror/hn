@@ -250,10 +250,6 @@ impl App {
     }
   }
 
-  fn enqueue_effect(&mut self, effect: Effect) {
-    self.pending_effects.push(effect);
-  }
-
   fn ensure_item(&mut self, tab_index: usize, target_index: usize) -> Result {
     let current_len = self
       .list_view(tab_index)
@@ -457,7 +453,7 @@ impl App {
 
   fn open_comment_link(&mut self) {
     if let Mode::Comments(view) = &self.mode {
-      self.enqueue_effect(Effect::OpenUrl {
+      self.pending_effects.push(Effect::OpenUrl {
         url: view.link().to_string(),
       });
     }
@@ -498,7 +494,7 @@ impl App {
       request_id,
     });
 
-    self.enqueue_effect(Effect::FetchComments {
+    self.pending_effects.push(Effect::FetchComments {
       item_id: id,
       request_id,
     });
@@ -508,7 +504,7 @@ impl App {
 
   fn open_current_in_browser(&mut self) {
     if let Some(entry) = self.current_entry() {
-      self.enqueue_effect(Effect::OpenUrl {
+      self.pending_effects.push(Effect::OpenUrl {
         url: entry.resolved_url(),
       });
     }
@@ -782,7 +778,7 @@ impl App {
       self.message = LOADING_STATUS.into();
     }
 
-    self.enqueue_effect(Effect::FetchTabItems {
+    self.pending_effects.push(Effect::FetchTabItems {
       tab_index,
       category,
       offset,
