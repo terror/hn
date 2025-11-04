@@ -279,6 +279,29 @@ impl App {
     self.help.draw(frame);
   }
 
+  fn ensure_bookmarks_tab(&mut self) -> usize {
+    if let Some(index) = self.bookmarks_tab_index {
+      return index;
+    }
+
+    let entries = self.bookmarks.entries_vec();
+    let tab_index = self.tabs.len();
+
+    self.tabs.push(Tab {
+      category: BOOKMARKS_CATEGORY,
+      has_more: false,
+      label: BOOKMARKS_CATEGORY.label,
+    });
+
+    self.tab_views.push(Some(ListView::new(entries)));
+    self.tab_loading.push(false);
+    self.pending_selections.push(None);
+
+    self.bookmarks_tab_index = Some(tab_index);
+
+    tab_index
+  }
+
   fn ensure_item(&mut self, tab_index: usize, target_index: usize) -> Result {
     let current_len = self
       .list_view(tab_index)
@@ -330,29 +353,6 @@ impl App {
     self.pending_selections.push(None);
 
     self.search_tab_index = Some(tab_index);
-
-    tab_index
-  }
-
-  fn ensure_bookmarks_tab(&mut self) -> usize {
-    if let Some(index) = self.bookmarks_tab_index {
-      return index;
-    }
-
-    let entries = self.bookmarks.entries_vec();
-    let tab_index = self.tabs.len();
-
-    self.tabs.push(Tab {
-      category: BOOKMARKS_CATEGORY,
-      has_more: false,
-      label: BOOKMARKS_CATEGORY.label,
-    });
-
-    self.tab_views.push(Some(ListView::new(entries)));
-    self.tab_loading.push(false);
-    self.pending_selections.push(None);
-
-    self.bookmarks_tab_index = Some(tab_index);
 
     tab_index
   }
@@ -413,143 +413,6 @@ impl App {
         }
       },
     }
-  }
-
-  fn refresh_bookmarks_view(&mut self, tab_index: usize) {
-    let entries = self.bookmarks.entries_vec();
-
-    if let Some(view) = self.list_view_mut(tab_index) {
-      let selected = view.selected_index().unwrap_or(0);
-      let offset = view.offset();
-
-      *view = ListView::new(entries);
-
-      if !view.is_empty() {
-        let last_index = view.len().saturating_sub(1);
-        view.set_selected(selected.min(last_index));
-        view.set_offset(offset.min(last_index));
-      }
-    } else if let Some(slot) = self.tab_views.get_mut(tab_index) {
-      let mut view = ListView::new(entries);
-
-      if let Some(existing) = slot.as_ref() {
-        let selected = existing.selected_index().unwrap_or(0);
-        let offset = existing.offset();
-
-        if !view.is_empty() {
-          let last_index = view.len().saturating_sub(1);
-          view.set_selected(selected.min(last_index));
-          view.set_offset(offset.min(last_index));
-        }
-      }
-
-      *slot = Some(view);
-    }
-  }
-
-  fn remove_bookmarks_tab(&mut self) {
-    let Some(index) = self.bookmarks_tab_index.take() else {
-      return;
-    };
-
-    if self.active_tab == index {
-      self.mode = Mode::List(ListView::default());
-    } else if self.active_tab > index {
-      self.active_tab = self.active_tab.saturating_sub(1);
-    }
-
-    if let Some(search_index) = self.search_tab_index {
-      if search_index == index {
-        self.search_tab_index = None;
-      } else if search_index > index {
-        self.search_tab_index = Some(search_index.saturating_sub(1));
-      }
-    }
-
-    if index < self.tabs.len() {
-      self.tabs.remove(index);
-    }
-
-    if index < self.tab_views.len() {
-      self.tab_views.remove(index);
-    }
-
-    if index < self.tab_loading.len() {
-      self.tab_loading.remove(index);
-    }
-
-    if index < self.pending_selections.len() {
-      self.pending_selections.remove(index);
-    }
-
-    if !self.tabs.is_empty() {
-      self.active_tab = self.active_tab.min(self.tabs.len().saturating_sub(1));
-      self.restore_active_list_view();
-    }
-  }
-
-  fn sync_bookmarks_tab(&mut self) {
-    if self.bookmarks.is_empty() {
-      self.remove_bookmarks_tab();
-    } else {
-      let index = self.ensure_bookmarks_tab();
-      self.refresh_bookmarks_view(index);
-    }
-  }
-
-  fn toggle_bookmark(&mut self) -> Result {
-    match &mut self.mode {
-      Mode::List(_) => self.toggle_list_bookmark(),
-      Mode::Comments(_) => self.toggle_comment_bookmark(),
-    }
-  }
-
-  fn toggle_comment_bookmark(&mut self) -> Result {
-    let Mode::Comments(view) = &mut self.mode else {
-      return Ok(());
-    };
-
-    let Some(selected) = view.selected_entry() else {
-      return Ok(());
-    };
-
-    let entry = selected.to_bookmark_entry();
-
-    let added = self.bookmarks.toggle(&entry)?;
-
-    self.sync_bookmarks_tab();
-
-    if !self.help.is_visible() {
-      let title = truncate(&entry.title, 40);
-      self.message = if added {
-        format!("Bookmarked \"{title}\"")
-      } else {
-        format!("Removed bookmark for \"{title}\"")
-      };
-    }
-
-    Ok(())
-  }
-
-  fn toggle_list_bookmark(&mut self) -> Result {
-    let Some(entry) = self.current_entry().cloned() else {
-      return Ok(());
-    };
-
-    let added = self.bookmarks.toggle(&entry)?;
-
-    self.sync_bookmarks_tab();
-
-    if !self.help.is_visible() {
-      let title = truncate(&entry.title, 40);
-      self.message = if added {
-        format!("Bookmarked \"{title}\"")
-      } else {
-        format!("Removed bookmark for \"{title}\"")
-      };
-    }
-
-    Ok(())
   }
 
   fn handle_search_key(&mut self, key: KeyEvent) -> Command {
@@ -910,6 +773,79 @@ impl App {
     }
   }
 
+  fn refresh_bookmarks_view(&mut self, tab_index: usize) {
+    let entries = self.bookmarks.entries_vec();
+
+    if let Some(view) = self.list_view_mut(tab_index) {
+      let selected = view.selected_index().unwrap_or(0);
+      let offset = view.offset();
+
+      *view = ListView::new(entries);
+
+      if !view.is_empty() {
+        let last_index = view.len().saturating_sub(1);
+        view.set_selected(selected.min(last_index));
+        view.set_offset(offset.min(last_index));
+      }
+    } else if let Some(slot) = self.tab_views.get_mut(tab_index) {
+      let mut view = ListView::new(entries);
+
+      if let Some(existing) = slot.as_ref() {
+        let selected = existing.selected_index().unwrap_or(0);
+        let offset = existing.offset();
+
+        if !view.is_empty() {
+          let last_index = view.len().saturating_sub(1);
+          view.set_selected(selected.min(last_index));
+          view.set_offset(offset.min(last_index));
+        }
+      }
+
+      *slot = Some(view);
+    }
+  }
+
+  fn remove_bookmarks_tab(&mut self) {
+    let Some(index) = self.bookmarks_tab_index.take() else {
+      return;
+    };
+
+    if self.active_tab == index {
+      self.mode = Mode::List(ListView::default());
+    } else if self.active_tab > index {
+      self.active_tab = self.active_tab.saturating_sub(1);
+    }
+
+    if let Some(search_index) = self.search_tab_index {
+      if search_index == index {
+        self.search_tab_index = None;
+      } else if search_index > index {
+        self.search_tab_index = Some(search_index.saturating_sub(1));
+      }
+    }
+
+    if index < self.tabs.len() {
+      self.tabs.remove(index);
+    }
+
+    if index < self.tab_views.len() {
+      self.tab_views.remove(index);
+    }
+
+    if index < self.tab_loading.len() {
+      self.tab_loading.remove(index);
+    }
+
+    if index < self.pending_selections.len() {
+      self.pending_selections.remove(index);
+    }
+
+    if !self.tabs.is_empty() {
+      self.active_tab = self.active_tab.min(self.tabs.len().saturating_sub(1));
+      self.restore_active_list_view();
+    }
+  }
+
   fn restore_active_list_view(&mut self) {
     if let Some(slot) = self.tab_views.get_mut(self.active_tab) {
       if let Some(view) = slot.take() {
@@ -1164,6 +1100,70 @@ impl App {
       self.active_tab = (self.active_tab + 1) % tab_count;
       self.restore_active_list_view();
     }
+  }
+
+  fn sync_bookmarks_tab(&mut self) {
+    if self.bookmarks.is_empty() {
+      self.remove_bookmarks_tab();
+    } else {
+      let index = self.ensure_bookmarks_tab();
+      self.refresh_bookmarks_view(index);
+    }
+  }
+
+  fn toggle_bookmark(&mut self) -> Result {
+    match &mut self.mode {
+      Mode::List(_) => self.toggle_list_bookmark(),
+      Mode::Comments(_) => self.toggle_comment_bookmark(),
+    }
+  }
+
+  fn toggle_comment_bookmark(&mut self) -> Result {
+    let Mode::Comments(view) = &mut self.mode else {
+      return Ok(());
+    };
+
+    let Some(selected) = view.selected_entry() else {
+      return Ok(());
+    };
+
+    let entry = selected.to_bookmark_entry();
+
+    let added = self.bookmarks.toggle(&entry)?;
+
+    self.sync_bookmarks_tab();
+
+    if !self.help.is_visible() {
+      let title = truncate(&entry.title, 40);
+      self.message = if added {
+        format!("Bookmarked \"{title}\"")
+      } else {
+        format!("Removed bookmark for \"{title}\"")
+      };
+    }
+
+    Ok(())
+  }
+
+  fn toggle_list_bookmark(&mut self) -> Result {
+    let Some(entry) = self.current_entry().cloned() else {
+      return Ok(());
+    };
+
+    let added = self.bookmarks.toggle(&entry)?;
+
+    self.sync_bookmarks_tab();
+
+    if !self.help.is_visible() {
+      let title = truncate(&entry.title, 40);
+      self.message = if added {
+        format!("Bookmarked \"{title}\"")
+      } else {
+        format!("Removed bookmark for \"{title}\"")
+      };
+    }
+
+    Ok(())
   }
 
   fn update_search_message(&mut self) {

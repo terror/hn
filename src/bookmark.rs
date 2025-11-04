@@ -38,10 +38,6 @@ impl Bookmarks {
     Ok(())
   }
 
-  pub(crate) fn entries(&self) -> &[ListEntry] {
-    &self.entries
-  }
-
   pub(crate) fn entries_vec(&self) -> Vec<ListEntry> {
     self.entries.clone()
   }
@@ -73,6 +69,16 @@ impl Bookmarks {
     Ok(Self { entries, ids, path })
   }
 
+  fn persist(&self) -> Result {
+    Self::ensure_parent_dir(&self.path)?;
+
+    let serialized = serde_json::to_vec_pretty(&self.entries)?;
+
+    fs::write(&self.path, serialized)?;
+
+    Ok(())
+  }
+
   pub(crate) fn remove(&mut self, id: &str) -> Result<bool> {
     if let Some(pos) = self.entries.iter().position(|entry| entry.id == id) {
       self.entries.remove(pos);
@@ -82,16 +88,6 @@ impl Bookmarks {
     } else {
       Ok(false)
     }
-  }
-
-  fn persist(&self) -> Result {
-    Self::ensure_parent_dir(&self.path)?;
-
-    let serialized = serde_json::to_vec_pretty(&self.entries)?;
-
-    fs::write(&self.path, serialized)?;
-
-    Ok(())
   }
 
   pub(crate) fn toggle(&mut self, entry: &ListEntry) -> Result<bool> {
@@ -130,12 +126,15 @@ mod tests {
   {
     let path = temp_bookmarks_file();
 
+    // SAFETY: altering an environment variable in a test-only helper; no
+    // concurrent code relies on `HN_BOOKMARKS_FILE`.
     unsafe {
       env::set_var("HN_BOOKMARKS_FILE", &path);
     }
 
     f(&path);
 
+    // SAFETY: restoring the environment to its previous state for the test.
     unsafe {
       env::remove_var("HN_BOOKMARKS_FILE");
     }
@@ -161,7 +160,13 @@ mod tests {
       let entry = sample_entry("1");
       assert!(bookmarks.toggle(&entry).unwrap());
       assert!(!bookmarks.is_empty());
-      assert_eq!(bookmarks.entries()[0].id, "1");
+      assert_eq!(
+        bookmarks
+          .entries_vec()
+          .first()
+          .map(|entry| entry.id.as_str()),
+        Some("1")
+      );
 
       assert!(!bookmarks.toggle(&entry).unwrap());
       assert!(bookmarks.is_empty());

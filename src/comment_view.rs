@@ -81,10 +81,6 @@ impl CommentView {
     &self.link
   }
 
-  pub(crate) fn selected_entry(&self) -> Option<&CommentEntry> {
-    self.selected.and_then(|idx| self.entries.get(idx))
-  }
-
   pub(crate) fn move_by(&mut self, delta: isize) {
     let (visible, selected_pos) = self.visible_with_selection();
 
@@ -251,6 +247,10 @@ impl CommentView {
     let previous = current.saturating_sub(1);
 
     self.selected = Some(visible[previous]);
+  }
+
+  pub(crate) fn selected_entry(&self) -> Option<&CommentEntry> {
+    self.selected.and_then(|idx| self.entries.get(idx))
   }
 
   pub(crate) fn toggle_selected(&mut self) {
