@@ -416,7 +416,7 @@ impl App {
           ));
         }
         Err(error) => {
-          self.message = format!("Could not open link: {error}");
+          self.set_transient_message(format!("Could not open link: {error}"));
         }
       },
     }
@@ -565,7 +565,7 @@ impl App {
     let id = match entry_id.parse::<u64>() {
       Ok(id) => id,
       Err(error) => {
-        self.message = format!("Could not load comments: {error}");
+        self.set_transient_message(format!("Could not load comments: {error}"));
         return Ok(());
       }
     };
@@ -682,7 +682,9 @@ impl App {
             }
             Err(error) => {
               if !self.help.is_visible() {
-                self.message = format!("Could not load more entries: {error}");
+                self.set_transient_message(format!(
+                  "Could not load more entries: {error}"
+                ));
               }
             }
           }
@@ -740,7 +742,8 @@ impl App {
             }
             Err(error) => {
               if !self.help.is_visible() {
-                self.message = format!("Could not search: {error}");
+                self
+                  .set_transient_message(format!("Could not search: {error}"));
               }
             }
           }
@@ -773,7 +776,9 @@ impl App {
             }
             Err(error) => {
               if !self.help.is_visible() {
-                self.message = format!("Could not load comments: {error}");
+                self.set_transient_message(format!(
+                  "Could not load comments: {error}"
+                ));
               }
             }
           }
@@ -914,7 +919,7 @@ impl App {
         }
         Err(error) => {
           self.pending_effects.clear();
-          self.message = format!("error: {error}");
+          self.set_transient_message(format!("error: {error}"));
           self.process_pending_events();
         }
       }
