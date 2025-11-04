@@ -47,6 +47,7 @@ use {
       Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
     },
     execute,
+    style::Stylize,
     terminal::{
       EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
       enable_raw_mode,
@@ -87,7 +88,7 @@ use {
     backtrace::BacktraceStatus,
     collections::HashSet,
     env, fs,
-    io::{self, Stdout},
+    io::{self, IsTerminal, Stdout},
     path::{Path, PathBuf},
     process,
     string::String,
@@ -197,21 +198,41 @@ async fn run() -> Result {
 #[tokio::main]
 async fn main() {
   if let Err(error) = run().await {
-    eprintln!("error: {error}");
+    let use_color = io::stderr().is_terminal();
+
+    if use_color {
+      eprintln!("{} {error}", "error:".bold().red());
+    } else {
+      eprintln!("error: {error}");
+    }
 
     for (i, error) in error.chain().skip(1).enumerate() {
       if i == 0 {
         eprintln!();
-        eprintln!("because:");
+
+        if use_color {
+          eprintln!("{}", "because:".bold().red());
+        } else {
+          eprintln!("because:");
+        }
       }
 
-      eprintln!("- {error}");
+      if use_color {
+        eprintln!("{} {error}", "-".bold().red());
+      } else {
+        eprintln!("- {error}");
+      }
     }
 
     let backtrace = error.backtrace();
 
     if backtrace.status() == BacktraceStatus::Captured {
-      eprintln!("backtrace:");
+      if use_color {
+        eprintln!("{}", "backtrace:".bold().red());
+      } else {
+        eprintln!("backtrace:");
+      }
+
       eprintln!("{backtrace}");
     }
 
