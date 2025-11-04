@@ -11,6 +11,7 @@ mod comment_thread;
 mod comment_view;
 mod effect;
 mod event;
+mod help_view;
 mod item;
 mod list_entry;
 mod list_view;
@@ -50,6 +51,7 @@ use {
     future::join_all,
     stream::{self, StreamExt},
   },
+  help_view::HelpView,
   item::Item,
   list_entry::ListEntry,
   list_view::ListView,
@@ -90,17 +92,16 @@ use {
 
 const INITIAL_BATCH_SIZE: usize = 30;
 
-const DEFAULT_STATUS: &str =
+const LIST_STATUS: &str =
   "↑/k up • ↓/j down • enter comments • o open link • q/esc quit • ? help";
 
 const COMMENTS_STATUS: &str =
   "↑/k up • ↓/j down • ←/h collapse • →/l expand • enter toggle • esc back";
 
 const HELP_TITLE: &str = "Help";
-
 const HELP_STATUS: &str = "Press ? or esc to close help";
 
-const LOADING_STATUS: &str = "Loading more entries...";
+const LOADING_ENTRIES_STATUS: &str = "Loading more entries...";
 const LOADING_COMMENTS_STATUS: &str = "Loading comments...";
 
 const BASE_INDENT: &str = " ";

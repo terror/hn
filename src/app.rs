@@ -6,15 +6,14 @@ pub(crate) struct App {
   event_rx: UnboundedReceiver<Event>,
   event_tx: UnboundedSender<Event>,
   handle: Handle,
+  help: HelpView,
   list_height: usize,
   message: String,
-  message_backup: Option<String>,
   mode: Mode,
   next_request_id: u64,
   pending_comment: Option<PendingComment>,
   pending_effects: Vec<Effect>,
   pending_selections: Vec<Option<usize>>,
-  show_help: bool,
   tab_loading: Vec<bool>,
   tab_views: Vec<Option<ListView<ListEntry>>>,
   tabs: Vec<Tab>,
@@ -24,8 +23,8 @@ impl App {
   fn close_comments(&mut self) {
     self.restore_active_list_view();
 
-    if !self.show_help {
-      self.message = DEFAULT_STATUS.into();
+    if !self.help.is_visible() {
+      self.message = LIST_STATUS.into();
     }
   }
 
@@ -91,7 +90,7 @@ impl App {
       Command::Quit => {
         should_exit = true;
       }
-      Command::ShowHelp => self.show_help(),
+      Command::ShowHelp => self.help.show(&mut self.message),
       Command::HideHelp => self.hide_help(),
       Command::SwitchTabLeft => self.switch_tab_left(),
       Command::SwitchTabRight => self.switch_tab_right(),
@@ -237,17 +236,7 @@ impl App {
 
     frame.render_widget(status, layout[2]);
 
-    if self.show_help {
-      let area = Self::help_area(frame.area());
-
-      frame.render_widget(Clear, area);
-
-      let help = Paragraph::new(HELP_TEXT)
-        .block(Block::default().title(HELP_TITLE).borders(Borders::ALL))
-        .wrap(Wrap { trim: true });
-
-      frame.render_widget(help, area);
-    }
+    self.help.draw(frame);
   }
 
   fn ensure_item(&mut self, tab_index: usize, target_index: usize) -> Result {
@@ -326,57 +315,8 @@ impl App {
     }
   }
 
-  fn handle_help_key(key: KeyEvent) -> Command {
-    match key.code {
-      KeyCode::Char('?') | KeyCode::Esc => Command::HideHelp,
-      KeyCode::Char('q' | 'Q') => Command::Quit,
-      _ => Command::None,
-    }
-  }
-
-  fn help_area(area: Rect) -> Rect {
-    fn saturating_usize_to_u16(value: usize) -> u16 {
-      u16::try_from(value).unwrap_or(u16::MAX)
-    }
-
-    let (line_count, max_line_width) =
-      HELP_TEXT
-        .lines()
-        .fold((0usize, 0usize), |(count, width), line| {
-          let updated_count = count.saturating_add(1);
-          let line_width = line.chars().count();
-
-          (updated_count, width.max(line_width))
-        });
-
-    let desired_width =
-      saturating_usize_to_u16(max_line_width.saturating_add(2)).max(1);
-
-    let desired_height =
-      saturating_usize_to_u16(line_count.saturating_add(2)).max(1);
-
-    let available_width = area.width.saturating_sub(2).max(1);
-    let available_height = area.height.saturating_sub(2).max(1);
-
-    let width = available_width.clamp(1, desired_width).min(area.width);
-    let height = available_height.clamp(1, desired_height).min(area.height);
-
-    let x = area.x + (area.width.saturating_sub(width)) / 2;
-    let y = area.y + (area.height.saturating_sub(height)) / 2;
-
-    Rect::new(x, y, width, height)
-  }
-
   fn hide_help(&mut self) {
-    if self.show_help {
-      self.show_help = false;
-
-      if let Some(message) = self.message_backup.take() {
-        self.message = message;
-      } else {
-        self.message = DEFAULT_STATUS.into();
-      }
-    }
+    self.help.hide(&mut self.message);
   }
 
   fn list_view(&self, index: usize) -> Option<&ListView<ListEntry>> {
@@ -435,16 +375,15 @@ impl App {
       client,
       event_rx,
       event_tx,
+      help: HelpView::new(),
       handle: Handle::current(),
       list_height: 0,
-      message: DEFAULT_STATUS.into(),
-      message_backup: None,
+      message: LIST_STATUS.into(),
       mode: Mode::List(initial_view),
       next_request_id: 0,
       pending_comment: None,
       pending_effects: Vec::new(),
       pending_selections,
-      show_help: false,
       tab_loading,
       tab_views,
       tabs: tab_meta,
@@ -475,7 +414,7 @@ impl App {
       }
     };
 
-    if !self.show_help {
+    if !self.help.is_visible() {
       self.message = LOADING_COMMENTS_STATUS.into();
     }
 
@@ -579,12 +518,12 @@ impl App {
                 }
               }
 
-              if !self.show_help {
-                self.message = DEFAULT_STATUS.into();
+              if !self.help.is_visible() {
+                self.message = LIST_STATUS.into();
               }
             }
             Err(error) => {
-              if !self.show_help {
+              if !self.help.is_visible() {
                 self.message = format!("Could not load more entries: {error}");
               }
             }
@@ -612,12 +551,12 @@ impl App {
 
               self.mode = Mode::Comments(view);
 
-              if !self.show_help {
+              if !self.help.is_visible() {
                 self.message = COMMENTS_STATUS.into();
               }
             }
             Err(error) => {
-              if !self.show_help {
+              if !self.help.is_visible() {
                 self.message = format!("Could not load comments: {error}");
               }
             }
@@ -664,8 +603,8 @@ impl App {
         continue;
       }
 
-      let command = if self.show_help {
-        Self::handle_help_key(key)
+      let command = if self.help.is_visible() {
+        HelpView::handle_key(key)
       } else {
         self.mode.handle_key(key, self.list_height.max(1))
       };
@@ -741,14 +680,6 @@ impl App {
     self.select_index(current.saturating_sub(1))
   }
 
-  fn show_help(&mut self) {
-    if !self.show_help {
-      self.message_backup = Some(self.message.clone());
-      self.message = HELP_STATUS.into();
-      self.show_help = true;
-    }
-  }
-
   fn start_load_for_tab(&mut self, tab_index: usize) -> Result {
     let (category, offset) = if let Some(tab) = self.tabs.get(tab_index) {
       if !tab.has_more {
@@ -774,8 +705,8 @@ impl App {
       return Ok(());
     }
 
-    if !self.show_help {
-      self.message = LOADING_STATUS.into();
+    if !self.help.is_visible() {
+      self.message = LOADING_ENTRIES_STATUS.into();
     }
 
     self.pending_effects.push(Effect::FetchTabItems {
