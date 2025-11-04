@@ -1,8 +1,3 @@
-pub const BOOKMARKS_CATEGORY: Category = Category {
-  label: "bookmarks",
-  kind: CategoryKind::Bookmarks,
-};
-
 #[derive(Clone, Copy)]
 pub enum CategoryKind {
   Bookmarks,

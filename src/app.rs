@@ -1,7 +1,5 @@
 use super::*;
 
-use super::category::BOOKMARKS_CATEGORY;
-
 pub(crate) struct App {
   active_tab: usize,
   bookmarks: Bookmarks,
@@ -285,18 +283,23 @@ impl App {
     }
 
     let entries = self.bookmarks.entries_vec();
+
     let tab_index = self.tabs.len();
 
+    let category = Category {
+      label: "bookmarks",
+      kind: CategoryKind::Bookmarks,
+    };
+
     self.tabs.push(Tab {
-      category: BOOKMARKS_CATEGORY,
+      category,
       has_more: false,
-      label: BOOKMARKS_CATEGORY.label,
+      label: category.label,
     });
 
     self.tab_views.push(Some(ListView::new(entries)));
     self.tab_loading.push(false);
     self.pending_selections.push(None);
-
     self.bookmarks_tab_index = Some(tab_index);
 
     tab_index
