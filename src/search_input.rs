@@ -15,3 +15,17 @@ impl SearchInput {
     format!("Search: {}", self.buffer)
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn prompt_reflects_current_buffer() {
+    let mut input = SearchInput::new("status".to_string());
+    assert_eq!(input.prompt(), "Search: ");
+
+    input.buffer.push_str("rust");
+    assert_eq!(input.prompt(), "Search: rust");
+  }
+}

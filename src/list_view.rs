@@ -87,3 +87,49 @@ impl<T> ListView<T> {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn selected_index_is_none_when_empty() {
+    let view = ListView::<i32>::default();
+    assert_eq!(view.selected_index(), None);
+    assert!(view.selected_item().is_none());
+  }
+
+  #[test]
+  fn selection_and_offset_are_clamped_to_bounds() {
+    let mut view = ListView::new(vec![1, 2, 3]);
+
+    view.set_selected(10);
+    assert_eq!(view.selected_index(), Some(2));
+
+    view.set_offset(10);
+    assert_eq!(view.offset(), 2);
+  }
+
+  #[test]
+  fn extend_appends_items_without_resetting_selection() {
+    let mut view = ListView::new(vec!["a", "b"]);
+    view.set_selected(1);
+
+    view.extend(["c", "d"]);
+
+    assert_eq!(view.len(), 4);
+    assert_eq!(view.selected_index(), Some(1));
+    assert_eq!(view.selected_item(), Some(&"b"));
+  }
+
+  #[test]
+  fn selecting_index_uses_visible_order() {
+    let mut view = ListView::new(vec![10, 20, 30]);
+
+    view.set_selected(0);
+    assert_eq!(view.selected_item(), Some(&10));
+
+    view.set_selected(2);
+    assert_eq!(view.selected_item(), Some(&30));
+  }
+}

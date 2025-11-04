@@ -105,3 +105,91 @@ impl Mode {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn sample_list_entries() -> Vec<ListEntry> {
+    vec![
+      ListEntry {
+        detail: None,
+        id: "1".to_string(),
+        title: "First".to_string(),
+        url: None,
+      },
+      ListEntry {
+        detail: None,
+        id: "2".to_string(),
+        title: "Second".to_string(),
+        url: None,
+      },
+    ]
+  }
+
+  fn make_list_mode() -> Mode {
+    Mode::List(ListView::new(sample_list_entries()))
+  }
+
+  fn make_comments_mode() -> Mode {
+    Mode::Comments(CommentView::new(
+      CommentThread {
+        focus: None,
+        roots: vec![Comment {
+          author: Some("user".to_string()),
+          children: Vec::new(),
+          dead: false,
+          deleted: false,
+          id: 1,
+          text: Some("body".to_string()),
+        }],
+        url: None,
+      },
+      "fallback".to_string(),
+    ))
+  }
+
+  fn key(code: KeyCode) -> KeyEvent {
+    KeyEvent::new(code, KeyModifiers::NONE)
+  }
+
+  #[test]
+  fn quitting_from_list_mode_uses_quit_command() {
+    assert_eq!(
+      make_list_mode().handle_key(key(KeyCode::Char('q')), 0),
+      Command::Quit
+    );
+  }
+
+  #[test]
+  fn starting_search_from_comments_mode_returns_command() {
+    assert_eq!(
+      make_comments_mode().handle_key(key(KeyCode::Char('/')), 0),
+      Command::StartSearch
+    );
+  }
+
+  #[test]
+  fn end_key_in_list_mode_selects_last_item() {
+    let mut mode = make_list_mode();
+
+    assert_eq!(mode.handle_key(key(KeyCode::End), 0), Command::None);
+
+    if let Mode::List(ref view) = mode {
+      assert_eq!(view.selected_index(), Some(1));
+    } else {
+      panic!("expected list mode");
+    }
+  }
+
+  #[test]
+  fn navigation_keys_in_list_mode_return_expected_commands() {
+    let mut mode = make_list_mode();
+
+    let next = mode.handle_key(key(KeyCode::Down), 0);
+    assert_eq!(next, Command::SelectNext);
+
+    let prev = mode.handle_key(key(KeyCode::Up), 0);
+    assert_eq!(prev, Command::SelectPrevious);
+  }
+}
