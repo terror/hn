@@ -173,10 +173,33 @@ impl App {
         let selected_index = view.selected_index();
         let offset = view.offset();
 
+        let is_loading = self
+          .tab_loading
+          .get(self.active_tab)
+          .copied()
+          .unwrap_or(false);
+
+        let is_search_tab = self
+          .tabs
+          .get(self.active_tab)
+          .is_some_and(|tab| matches!(tab.category.kind, CategoryKind::Search));
+
         let list_items: Vec<ListItem> = if items.is_empty() {
+          let text = if is_loading {
+            if is_search_tab {
+              LOADING_SEARCH_STATUS
+            } else {
+              LOADING_ENTRIES_STATUS
+            }
+          } else if is_search_tab {
+            "No results yet. Try another query."
+          } else {
+            "Nothing to show. Try another tab."
+          };
+
           vec![ListItem::new(Line::from(vec![
             Span::raw(BASE_INDENT),
-            Span::raw("Nothing to show. Try another tab."),
+            Span::raw(text),
           ]))]
         } else {
           items
@@ -614,6 +637,10 @@ impl App {
 
     self.next_request_id = self.next_request_id.wrapping_add(1);
 
+    if let Some(flag) = self.tab_loading.get_mut(tab_index) {
+      *flag = true;
+    }
+
     self.pending_search = Some(PendingSearch {
       query: query.clone(),
       request_id,
@@ -729,6 +756,10 @@ impl App {
           let Some(pending) = self.pending_search.take() else {
             continue;
           };
+
+          if let Some(flag) = self.tab_loading.get_mut(pending.tab_index) {
+            *flag = false;
+          }
 
           match result {
             Ok((entries, has_more)) => {

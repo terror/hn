@@ -109,6 +109,7 @@ const HELP_STATUS: &str = "Press ? or esc to close help";
 
 const LOADING_ENTRIES_STATUS: &str = "Loading more entries...";
 const LOADING_COMMENTS_STATUS: &str = "Loading comments...";
+const LOADING_SEARCH_STATUS: &str = "Searching...";
 
 const BASE_INDENT: &str = " ";
 
@@ -128,6 +129,7 @@ Navigation:
 Actions:
   enter   view comments for the selected item
   o       open the selected item in your browser
+  /       start a search (type to edit, enter to submit)
   q       quit hn
   esc     close help or quit from the list
   scroll  keep going past the end to load more stories
