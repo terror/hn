@@ -1,8 +1,8 @@
 #[derive(Clone, Copy)]
 pub enum CategoryKind {
   Comments,
-  Stories(&'static str),
   Search,
+  Stories(&'static str),
 }
 
 #[derive(Clone, Copy)]

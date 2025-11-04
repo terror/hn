@@ -1,16 +1,16 @@
 use super::*;
 
 pub(crate) enum Event {
-  CommentsLoaded {
+  Comments {
     request_id: u64,
     result: Result<CommentThread>,
   },
-  TabItemsLoaded {
-    tab_index: usize,
-    result: Result<Vec<ListEntry>>,
-  },
-  SearchResultsLoaded {
+  SearchResults {
     request_id: u64,
     result: Result<(Vec<ListEntry>, bool)>,
+  },
+  TabItems {
+    tab_index: usize,
+    result: Result<Vec<ListEntry>>,
   },
 }

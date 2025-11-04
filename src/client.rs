@@ -179,39 +179,6 @@ impl Client {
     Ok(stories)
   }
 
-  pub(crate) async fn search_stories(
-    &self,
-    query: &str,
-    page: usize,
-    hits_per_page: usize,
-  ) -> Result<(Vec<ListEntry>, bool)> {
-    let hits_per_page = hits_per_page.max(1);
-
-    let mut url = reqwest::Url::parse(Self::SEARCH_URL)?;
-
-    {
-      let mut params = url.query_pairs_mut();
-      params.append_pair("query", query);
-      params.append_pair("tags", "story");
-      params.append_pair("hitsPerPage", &hits_per_page.to_string());
-      params.append_pair("page", &page.to_string());
-    }
-
-    let response = self
-      .client
-      .get(url)
-      .send()
-      .await?
-      .json::<SearchResponse>()
-      .await?;
-
-    let has_more = response.page + 1 < response.nb_pages;
-
-    let entries = response.hits.into_iter().map(ListEntry::from).collect();
-
-    Ok((entries, has_more))
-  }
-
   pub(crate) async fn fetch_thread(&self, id: u64) -> Result<CommentThread> {
     let item = self.fetch_item(id).await?;
 
@@ -272,5 +239,38 @@ impl Client {
       .collect::<Result<Vec<_>>>()?;
 
     Ok(tabs)
+  }
+
+  pub(crate) async fn search_stories(
+    &self,
+    query: &str,
+    page: usize,
+    hits_per_page: usize,
+  ) -> Result<(Vec<ListEntry>, bool)> {
+    let hits_per_page = hits_per_page.max(1);
+
+    let mut url = reqwest::Url::parse(Self::SEARCH_URL)?;
+
+    {
+      let mut params = url.query_pairs_mut();
+      params.append_pair("query", query);
+      params.append_pair("tags", "story");
+      params.append_pair("hitsPerPage", &hits_per_page.to_string());
+      params.append_pair("page", &page.to_string());
+    }
+
+    let response = self
+      .client
+      .get(url)
+      .send()
+      .await?
+      .json::<SearchResponse>()
+      .await?;
+
+    let has_more = response.page + 1 < response.nb_pages;
+
+    let entries = response.hits.into_iter().map(ListEntry::from).collect();
+
+    Ok((entries, has_more))
   }
 }

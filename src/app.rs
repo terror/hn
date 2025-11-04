@@ -30,8 +30,8 @@ pub(crate) struct App {
   mode: Mode,
   next_request_id: u64,
   pending_comment: Option<PendingComment>,
-  pending_search: Option<PendingSearch>,
   pending_effects: Vec<Effect>,
+  pending_search: Option<PendingSearch>,
   pending_selections: Vec<Option<usize>>,
   search_input: Option<SearchInput>,
   search_tab_index: Option<usize>,
@@ -41,6 +41,12 @@ pub(crate) struct App {
 }
 
 impl App {
+  fn cancel_search(&mut self) {
+    if let Some(input) = self.search_input.take() {
+      self.message = input.message_backup;
+    }
+  }
+
   fn close_comments(&mut self) {
     self.restore_active_list_view();
 
@@ -316,6 +322,31 @@ impl App {
     Ok(())
   }
 
+  fn ensure_search_tab(&mut self) -> usize {
+    if let Some(index) = self.search_tab_index {
+      return index;
+    }
+
+    let tab_index = self.tabs.len();
+
+    self.tabs.push(Tab {
+      category: Category {
+        label: "search",
+        kind: CategoryKind::Search,
+      },
+      has_more: false,
+      label: "search",
+    });
+
+    self.tab_views.push(Some(ListView::default()));
+    self.tab_loading.push(false);
+    self.pending_selections.push(None);
+
+    self.search_tab_index = Some(tab_index);
+
+    tab_index
+  }
+
   fn execute_effect(&mut self, effect: Effect) {
     match effect {
       Effect::FetchComments {
@@ -327,7 +358,7 @@ impl App {
         let handle = self.handle.clone();
 
         handle.spawn(async move {
-          let _ = sender.send(Event::CommentsLoaded {
+          let _ = sender.send(Event::Comments {
             request_id,
             result: client.fetch_thread(item_id).await,
           });
@@ -343,7 +374,7 @@ impl App {
         let handle = self.handle.clone();
 
         handle.spawn(async move {
-          let _ = sender.send(Event::TabItemsLoaded {
+          let _ = sender.send(Event::TabItems {
             tab_index,
             result: client
               .fetch_category_items(category, offset, INITIAL_BATCH_SIZE)
@@ -357,7 +388,7 @@ impl App {
         let handle = self.handle.clone();
 
         handle.spawn(async move {
-          let _ = sender.send(Event::SearchResultsLoaded {
+          let _ = sender.send(Event::SearchResults {
             request_id,
             result: client.search_stories(&query, 0, INITIAL_BATCH_SIZE).await,
           });
@@ -371,6 +402,45 @@ impl App {
           self.message = format!("Could not open link: {error}");
         }
       },
+    }
+  }
+
+  fn handle_search_key(&mut self, key: KeyEvent) -> Command {
+    if self.search_input.is_none() {
+      return Command::None;
+    }
+
+    match key.code {
+      KeyCode::Esc => Command::CancelSearch,
+      KeyCode::Enter => Command::SubmitSearch,
+      KeyCode::Backspace => {
+        if let Some(input) = self.search_input.as_mut() {
+          input.buffer.pop();
+        }
+
+        self.update_search_message();
+
+        Command::None
+      }
+      KeyCode::Char(ch) => {
+        let modifiers = key.modifiers;
+
+        if modifiers.contains(KeyModifiers::CONTROL)
+          || modifiers.contains(KeyModifiers::ALT)
+          || modifiers.contains(KeyModifiers::SUPER)
+        {
+          return Command::None;
+        }
+
+        if let Some(input) = self.search_input.as_mut() {
+          input.buffer.push(ch);
+        }
+
+        self.update_search_message();
+
+        Command::None
+      }
+      _ => Command::None,
     }
   }
 
@@ -511,158 +581,6 @@ impl App {
     }
   }
 
-  fn cancel_search(&mut self) {
-    if let Some(input) = self.search_input.take() {
-      self.message = input.message_backup;
-    }
-  }
-
-  fn ensure_search_tab(&mut self) -> usize {
-    if let Some(index) = self.search_tab_index {
-      return index;
-    }
-
-    let tab_index = self.tabs.len();
-
-    self.tabs.push(Tab {
-      category: Category {
-        label: "search",
-        kind: CategoryKind::Search,
-      },
-      has_more: false,
-      label: "search",
-    });
-
-    self.tab_views.push(Some(ListView::default()));
-    self.tab_loading.push(false);
-    self.pending_selections.push(None);
-
-    self.search_tab_index = Some(tab_index);
-
-    tab_index
-  }
-
-  fn handle_search_key(&mut self, key: KeyEvent) -> Command {
-    if self.search_input.is_none() {
-      return Command::None;
-    }
-
-    match key.code {
-      KeyCode::Esc => Command::CancelSearch,
-      KeyCode::Enter => Command::SubmitSearch,
-      KeyCode::Backspace => {
-        if let Some(input) = self.search_input.as_mut() {
-          input.buffer.pop();
-        }
-
-        self.update_search_message();
-
-        Command::None
-      }
-      KeyCode::Char(ch) => {
-        let modifiers = key.modifiers;
-
-        if modifiers.contains(KeyModifiers::CONTROL)
-          || modifiers.contains(KeyModifiers::ALT)
-          || modifiers.contains(KeyModifiers::SUPER)
-        {
-          return Command::None;
-        }
-
-        if let Some(input) = self.search_input.as_mut() {
-          input.buffer.push(ch);
-        }
-
-        self.update_search_message();
-
-        Command::None
-      }
-      _ => Command::None,
-    }
-  }
-
-  fn search_input_command(&mut self, key: KeyEvent) -> Option<Command> {
-    if self.search_input.is_some() {
-      Some(self.handle_search_key(key))
-    } else {
-      None
-    }
-  }
-
-  fn start_search(&mut self) {
-    if self.search_input.is_some() {
-      return;
-    }
-
-    let backup = self.message.clone();
-
-    self.search_input = Some(SearchInput::new(backup));
-
-    self.update_search_message();
-  }
-
-  fn submit_search(&mut self) -> Result {
-    let Some(search) = self.search_input.take() else {
-      return Ok(());
-    };
-
-    let query = search.buffer.trim().to_string();
-
-    if query.is_empty() {
-      self.message = search.message_backup;
-      return Ok(());
-    }
-
-    if matches!(self.mode, Mode::Comments(_)) {
-      self.restore_active_list_view();
-    }
-
-    let tab_index = self.ensure_search_tab();
-
-    self.store_active_list_view();
-    self.active_tab = tab_index;
-    self.restore_active_list_view();
-
-    if let Some(list) = self.list_view_mut(tab_index) {
-      *list = ListView::default();
-    } else if let Some(slot) = self.tab_views.get_mut(tab_index) {
-      *slot = Some(ListView::default());
-    }
-
-    if let Some(tab) = self.tabs.get_mut(tab_index) {
-      tab.has_more = false;
-    }
-
-    let request_id = self.next_request_id;
-
-    self.next_request_id = self.next_request_id.wrapping_add(1);
-
-    if let Some(flag) = self.tab_loading.get_mut(tab_index) {
-      *flag = true;
-    }
-
-    self.pending_search = Some(PendingSearch {
-      query: query.clone(),
-      request_id,
-      tab_index,
-    });
-
-    self.message = format!("Searching for \"{}\"...", truncate(&query, 40));
-
-    self
-      .pending_effects
-      .push(Effect::FetchSearchResults { query, request_id });
-
-    Ok(())
-  }
-
-  fn update_search_message(&mut self) {
-    if let Some(input) = &self.search_input {
-      let prompt = input.prompt();
-      self.message = truncate(&prompt, 80);
-    }
-  }
-
   fn page_down(&mut self) -> Result {
     if self.tabs.is_empty() {
       return Ok(());
@@ -702,7 +620,7 @@ impl App {
   fn process_pending_events(&mut self) {
     loop {
       match self.event_rx.try_recv() {
-        Ok(Event::TabItemsLoaded { tab_index, result }) => {
+        Ok(Event::TabItems { tab_index, result }) => {
           if let Some(flag) = self.tab_loading.get_mut(tab_index) {
             *flag = false;
           }
@@ -743,7 +661,7 @@ impl App {
             }
           }
         }
-        Ok(Event::SearchResultsLoaded { request_id, result }) => {
+        Ok(Event::SearchResults { request_id, result }) => {
           let is_current = self
             .pending_search
             .as_ref()
@@ -801,7 +719,7 @@ impl App {
             }
           }
         }
-        Ok(Event::CommentsLoaded { request_id, result }) => {
+        Ok(Event::Comments { request_id, result }) => {
           let is_current = self
             .pending_comment
             .as_ref()
@@ -906,6 +824,14 @@ impl App {
     Ok(())
   }
 
+  fn search_input_command(&mut self, key: KeyEvent) -> Option<Command> {
+    if self.search_input.is_some() {
+      Some(self.handle_search_key(key))
+    } else {
+      None
+    }
+  }
+
   fn select_index(&mut self, target: usize) -> Result {
     if self.tabs.is_empty() {
       return Ok(());
@@ -992,12 +918,79 @@ impl App {
     Ok(())
   }
 
+  fn start_search(&mut self) {
+    if self.search_input.is_some() {
+      return;
+    }
+
+    let backup = self.message.clone();
+
+    self.search_input = Some(SearchInput::new(backup));
+
+    self.update_search_message();
+  }
+
   fn store_active_list_view(&mut self) {
     if let Mode::List(view) = &mut self.mode
       && let Some(slot) = self.tab_views.get_mut(self.active_tab)
     {
       *slot = Some(std::mem::take(view));
     }
+  }
+
+  fn submit_search(&mut self) -> Result {
+    let Some(search) = self.search_input.take() else {
+      return Ok(());
+    };
+
+    let query = search.buffer.trim().to_string();
+
+    if query.is_empty() {
+      self.message = search.message_backup;
+      return Ok(());
+    }
+
+    if matches!(self.mode, Mode::Comments(_)) {
+      self.restore_active_list_view();
+    }
+
+    let tab_index = self.ensure_search_tab();
+
+    self.store_active_list_view();
+    self.active_tab = tab_index;
+    self.restore_active_list_view();
+
+    if let Some(list) = self.list_view_mut(tab_index) {
+      *list = ListView::default();
+    } else if let Some(slot) = self.tab_views.get_mut(tab_index) {
+      *slot = Some(ListView::default());
+    }
+
+    if let Some(tab) = self.tabs.get_mut(tab_index) {
+      tab.has_more = false;
+    }
+
+    let request_id = self.next_request_id;
+
+    self.next_request_id = self.next_request_id.wrapping_add(1);
+
+    if let Some(flag) = self.tab_loading.get_mut(tab_index) {
+      *flag = true;
+    }
+
+    self.pending_search = Some(PendingSearch {
+      query: query.clone(),
+      request_id,
+      tab_index,
+    });
+
+    self.message = format!("Searching for \"{}\"...", truncate(&query, 40));
+
+    self
+      .pending_effects
+      .push(Effect::FetchSearchResults { query, request_id });
+
+    Ok(())
   }
 
   fn switch_tab_left(&mut self) {
@@ -1017,6 +1010,13 @@ impl App {
       self.store_active_list_view();
       self.active_tab = (self.active_tab + 1) % tab_count;
       self.restore_active_list_view();
+    }
+  }
+
+  fn update_search_message(&mut self) {
+    if let Some(input) = &self.search_input {
+      let prompt = input.prompt();
+      self.message = truncate(&prompt, 80);
     }
   }
 }
