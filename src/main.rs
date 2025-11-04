@@ -19,6 +19,7 @@ mod mode;
 mod pending_comment;
 mod pending_search;
 mod search_hit;
+mod search_input;
 mod search_response;
 mod story;
 mod tab;
@@ -72,6 +73,7 @@ use {
     },
   },
   search_hit::SearchHit,
+  search_input::SearchInput,
   search_response::SearchResponse,
   serde::{
     Deserialize, Deserializer,

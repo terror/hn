@@ -1,23 +1,5 @@
 use super::*;
 
-struct SearchInput {
-  buffer: String,
-  message_backup: String,
-}
-
-impl SearchInput {
-  fn new(message_backup: String) -> Self {
-    Self {
-      buffer: String::new(),
-      message_backup,
-    }
-  }
-
-  fn prompt(&self) -> String {
-    format!("Search: {}", self.buffer)
-  }
-}
-
 pub(crate) struct App {
   active_tab: usize,
   client: Client,
