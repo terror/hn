@@ -9,4 +9,8 @@ pub(crate) enum Event {
     tab_index: usize,
     result: Result<Vec<ListEntry>>,
   },
+  SearchResultsLoaded {
+    request_id: u64,
+    result: Result<(Vec<ListEntry>, bool)>,
+  },
 }

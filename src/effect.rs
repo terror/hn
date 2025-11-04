@@ -11,6 +11,10 @@ pub(crate) enum Effect {
     category: Category,
     offset: usize,
   },
+  FetchSearchResults {
+    query: String,
+    request_id: u64,
+  },
   OpenUrl {
     url: String,
   },

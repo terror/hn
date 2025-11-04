@@ -17,6 +17,9 @@ mod list_entry;
 mod list_view;
 mod mode;
 mod pending_comment;
+mod pending_search;
+mod search_hit;
+mod search_response;
 mod story;
 mod tab;
 mod utils;
@@ -57,6 +60,7 @@ use {
   list_view::ListView,
   mode::Mode,
   pending_comment::PendingComment,
+  pending_search::PendingSearch,
   ratatui::{
     Frame, Terminal,
     backend::CrosstermBackend,
@@ -67,6 +71,8 @@ use {
       Block, Borders, Clear, List, ListItem, ListState, Paragraph, Tabs, Wrap,
     },
   },
+  search_hit::SearchHit,
+  search_response::SearchResponse,
   serde::{
     Deserialize, Deserializer,
     de::{self, Unexpected},

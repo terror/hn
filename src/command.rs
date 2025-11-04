@@ -1,5 +1,6 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
+  CancelSearch,
   CloseComments,
   HideHelp,
   None,
@@ -8,6 +9,8 @@ pub(crate) enum Command {
   OpenCurrentInBrowser,
   PageDown,
   PageUp,
+  StartSearch,
+  SubmitSearch,
   Quit,
   SelectFirst,
   SelectNext,

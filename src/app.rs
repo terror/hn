@@ -1,5 +1,23 @@
 use super::*;
 
+struct SearchInput {
+  buffer: String,
+  message_backup: String,
+}
+
+impl SearchInput {
+  fn new(message_backup: String) -> Self {
+    Self {
+      buffer: String::new(),
+      message_backup,
+    }
+  }
+
+  fn prompt(&self) -> String {
+    format!("Search: {}", self.buffer)
+  }
+}
+
 pub(crate) struct App {
   active_tab: usize,
   client: Client,
@@ -12,8 +30,11 @@ pub(crate) struct App {
   mode: Mode,
   next_request_id: u64,
   pending_comment: Option<PendingComment>,
+  pending_search: Option<PendingSearch>,
   pending_effects: Vec<Effect>,
   pending_selections: Vec<Option<usize>>,
+  search_input: Option<SearchInput>,
+  search_tab_index: Option<usize>,
   tab_loading: Vec<bool>,
   tab_views: Vec<Option<ListView<ListEntry>>>,
   tabs: Vec<Tab>,
@@ -92,6 +113,9 @@ impl App {
       }
       Command::ShowHelp => self.help.show(&mut self.message),
       Command::HideHelp => self.hide_help(),
+      Command::StartSearch => self.start_search(),
+      Command::CancelSearch => self.cancel_search(),
+      Command::SubmitSearch => self.submit_search()?,
       Command::SwitchTabLeft => self.switch_tab_left(),
       Command::SwitchTabRight => self.switch_tab_right(),
       Command::SelectNext => self.select_next()?,
@@ -304,6 +328,18 @@ impl App {
           });
         });
       }
+      Effect::FetchSearchResults { query, request_id } => {
+        let (client, sender) = (self.client.clone(), self.event_tx.clone());
+
+        let handle = self.handle.clone();
+
+        handle.spawn(async move {
+          let _ = sender.send(Event::SearchResultsLoaded {
+            request_id,
+            result: client.search_stories(&query, 0, INITIAL_BATCH_SIZE).await,
+          });
+        });
+      }
       Effect::OpenUrl { url } => match webbrowser::open(&url) {
         Ok(()) => {
           self.message = format!("Opened in browser: {}", truncate(&url, 80));
@@ -383,7 +419,10 @@ impl App {
       next_request_id: 0,
       pending_comment: None,
       pending_effects: Vec::new(),
+      pending_search: None,
       pending_selections,
+      search_input: None,
+      search_tab_index: None,
       tab_loading,
       tab_views,
       tabs: tab_meta,
@@ -446,6 +485,154 @@ impl App {
       self.pending_effects.push(Effect::OpenUrl {
         url: entry.resolved_url(),
       });
+    }
+  }
+
+  fn cancel_search(&mut self) {
+    if let Some(input) = self.search_input.take() {
+      self.message = input.message_backup;
+    }
+  }
+
+  fn ensure_search_tab(&mut self) -> usize {
+    if let Some(index) = self.search_tab_index {
+      return index;
+    }
+
+    let tab_index = self.tabs.len();
+
+    self.tabs.push(Tab {
+      category: Category {
+        label: "search",
+        kind: CategoryKind::Search,
+      },
+      has_more: false,
+      label: "search",
+    });
+
+    self.tab_views.push(Some(ListView::default()));
+    self.tab_loading.push(false);
+    self.pending_selections.push(None);
+
+    self.search_tab_index = Some(tab_index);
+
+    tab_index
+  }
+
+  fn handle_search_key(&mut self, key: KeyEvent) -> Command {
+    if self.search_input.is_none() {
+      return Command::None;
+    }
+
+    match key.code {
+      KeyCode::Esc => Command::CancelSearch,
+      KeyCode::Enter => Command::SubmitSearch,
+      KeyCode::Backspace => {
+        if let Some(input) = self.search_input.as_mut() {
+          input.buffer.pop();
+        }
+
+        self.update_search_message();
+
+        Command::None
+      }
+      KeyCode::Char(ch) => {
+        let modifiers = key.modifiers;
+
+        if modifiers.contains(KeyModifiers::CONTROL)
+          || modifiers.contains(KeyModifiers::ALT)
+          || modifiers.contains(KeyModifiers::SUPER)
+        {
+          return Command::None;
+        }
+
+        if let Some(input) = self.search_input.as_mut() {
+          input.buffer.push(ch);
+        }
+
+        self.update_search_message();
+
+        Command::None
+      }
+      _ => Command::None,
+    }
+  }
+
+  fn search_input_command(&mut self, key: KeyEvent) -> Option<Command> {
+    if self.search_input.is_some() {
+      Some(self.handle_search_key(key))
+    } else {
+      None
+    }
+  }
+
+  fn start_search(&mut self) {
+    if self.search_input.is_some() {
+      return;
+    }
+
+    let backup = self.message.clone();
+
+    self.search_input = Some(SearchInput::new(backup));
+
+    self.update_search_message();
+  }
+
+  fn submit_search(&mut self) -> Result {
+    let Some(search) = self.search_input.take() else {
+      return Ok(());
+    };
+
+    let query = search.buffer.trim().to_string();
+
+    if query.is_empty() {
+      self.message = search.message_backup;
+      return Ok(());
+    }
+
+    if matches!(self.mode, Mode::Comments(_)) {
+      self.restore_active_list_view();
+    }
+
+    let tab_index = self.ensure_search_tab();
+
+    self.store_active_list_view();
+    self.active_tab = tab_index;
+    self.restore_active_list_view();
+
+    if let Some(list) = self.list_view_mut(tab_index) {
+      *list = ListView::default();
+    } else if let Some(slot) = self.tab_views.get_mut(tab_index) {
+      *slot = Some(ListView::default());
+    }
+
+    if let Some(tab) = self.tabs.get_mut(tab_index) {
+      tab.has_more = false;
+    }
+
+    let request_id = self.next_request_id;
+
+    self.next_request_id = self.next_request_id.wrapping_add(1);
+
+    self.pending_search = Some(PendingSearch {
+      query: query.clone(),
+      request_id,
+      tab_index,
+    });
+
+    self.message = format!("Searching for \"{}\"...", truncate(&query, 40));
+
+    self
+      .pending_effects
+      .push(Effect::FetchSearchResults { query, request_id });
+
+    Ok(())
+  }
+
+  fn update_search_message(&mut self) {
+    if let Some(input) = &self.search_input {
+      let prompt = input.prompt();
+      self.message = truncate(&prompt, 80);
     }
   }
 
@@ -529,6 +716,60 @@ impl App {
             }
           }
         }
+        Ok(Event::SearchResultsLoaded { request_id, result }) => {
+          let is_current = self
+            .pending_search
+            .as_ref()
+            .is_some_and(|pending| pending.request_id == request_id);
+
+          if !is_current {
+            continue;
+          }
+
+          let Some(pending) = self.pending_search.take() else {
+            continue;
+          };
+
+          match result {
+            Ok((entries, has_more)) => {
+              if let Some(tab) = self.tabs.get_mut(pending.tab_index) {
+                tab.has_more = has_more;
+              }
+
+              let mut view = ListView::new(entries);
+
+              let result_count = view.len();
+
+              if !view.is_empty() {
+                view.set_selected(0);
+              }
+
+              if let Some(list) = self.list_view_mut(pending.tab_index) {
+                *list = view;
+              } else if let Some(slot) =
+                self.tab_views.get_mut(pending.tab_index)
+              {
+                *slot = Some(view);
+              }
+
+              if !self.help.is_visible() {
+                let truncated = truncate(&pending.query, 40);
+                self.message = match result_count {
+                  0 => format!("No results for \"{truncated}\""),
+                  1 => format!("Found 1 result for \"{truncated}\""),
+                  _ => {
+                    format!("Found {result_count} results for \"{truncated}\"")
+                  }
+                };
+              }
+            }
+            Err(error) => {
+              if !self.help.is_visible() {
+                self.message = format!("Could not search: {error}");
+              }
+            }
+          }
+        }
         Ok(Event::CommentsLoaded { request_id, result }) => {
           let is_current = self
             .pending_comment
@@ -605,6 +846,8 @@ impl App {
 
       let command = if self.help.is_visible() {
         HelpView::handle_key(key)
+      } else if let Some(command) = self.search_input_command(key) {
+        command
       } else {
         self.mode.handle_key(key, self.list_height.max(1))
       };

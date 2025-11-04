@@ -2,6 +2,7 @@
 pub enum CategoryKind {
   Comments,
   Stories(&'static str),
+  Search,
 }
 
 #[derive(Clone, Copy)]
