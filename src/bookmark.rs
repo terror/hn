@@ -101,10 +101,18 @@ impl Bookmarks {
 mod tests {
   use {
     super::*,
-    std::sync::atomic::{AtomicUsize, Ordering},
+    std::{
+      fs,
+      path::{Path, PathBuf},
+      sync::{
+        Mutex, OnceLock,
+        atomic::{AtomicUsize, Ordering},
+      },
+    },
   };
 
   static COUNTER: AtomicUsize = AtomicUsize::new(0);
+  static ENV_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 
   fn temp_bookmarks_file() -> PathBuf {
     env::temp_dir().join(format!(
@@ -117,6 +125,11 @@ mod tests {
   where
     F: FnOnce(&Path),
   {
+    let guard = ENV_MUTEX
+      .get_or_init(|| Mutex::new(()))
+      .lock()
+      .expect("env mutex poisoned");
+
     let path = temp_bookmarks_file();
 
     // SAFETY: altering an environment variable in a test-only helper; no
@@ -133,6 +146,8 @@ mod tests {
     }
 
     let _ = fs::remove_file(&path);
+
+    drop(guard);
   }
 
   fn sample_entry(id: &str) -> ListEntry {

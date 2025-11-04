@@ -1138,6 +1138,7 @@ impl App {
 
     if !self.help.is_visible() {
       let title = truncate(&entry.title, 40);
+
       self.message = if added {
         format!("Bookmarked \"{title}\"")
       } else {
@@ -1159,6 +1160,7 @@ impl App {
 
     if !self.help.is_visible() {
       let title = truncate(&entry.title, 40);
+
       self.message = if added {
         format!("Bookmarked \"{title}\"")
       } else {
