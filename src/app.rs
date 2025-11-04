@@ -100,7 +100,7 @@ impl App {
         should_exit = true;
       }
       Command::ShowHelp => self.help.show(&mut self.message),
-      Command::HideHelp => self.hide_help(),
+      Command::HideHelp => self.help.hide(&mut self.message),
       Command::StartSearch => self.start_search(),
       Command::CancelSearch => self.cancel_search(),
       Command::SubmitSearch => self.submit_search()?,
@@ -424,10 +424,6 @@ impl App {
       }
       _ => Command::None,
     }
-  }
-
-  fn hide_help(&mut self) {
-    self.help.hide(&mut self.message);
   }
 
   fn list_view(&self, index: usize) -> Option<&ListView<ListEntry>> {
