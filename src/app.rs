@@ -1,74 +1,10 @@
 use super::*;
 
-const DEFAULT_STATUS: &str =
-  "↑/k up • ↓/j down • enter comments • o open link • q/esc quit • ? help";
-
-const COMMENTS_STATUS: &str =
-  "↑/k up • ↓/j down • ←/h collapse • →/l expand • enter toggle • esc back";
-
-const HELP_TITLE: &str = "Help";
-
-const HELP_STATUS: &str = "Press ? or esc to close help";
-
-const LOADING_STATUS: &str = "Loading more entries...";
-
-const LOADING_COMMENTS_STATUS: &str = "Loading comments...";
-
-const BASE_INDENT: &str = " ";
-
-const HELP_TEXT: &str = "\
-Navigation:
-  ← / h   previous tab
-  → / l   next tab
-  ↑ / k   move selection up
-  ↓ / j   move selection down
-  pg↓     page down
-  pg↑     page up
-  ctrl+d  page down
-  ctrl+u  page up
-  home    jump to first item
-  end     jump to last item
-
-Actions:
-  enter   view comments for the selected item
-  o       open the selected item in your browser
-  q       quit hn
-  esc     close help or quit from the list
-  scroll  keep going past the end to load more stories
-  ?       toggle this help
-
-Comments:
-  ↑ / k   move selection up
-  ↓ / j   move selection down
-  pg↓     page down
-  pg↑     page up
-  ← / h   collapse or go to parent
-  → / l   expand or go to first child
-  enter   toggle collapse or expand
-  esc     return to the story list
-";
-
-enum AppEvent {
-  CommentsLoaded {
-    request_id: u64,
-    result: Result<CommentThread>,
-  },
-  TabItemsLoaded {
-    tab_index: usize,
-    result: Result<Vec<ListEntry>>,
-  },
-}
-
-struct PendingComment {
-  fallback_link: String,
-  request_id: u64,
-}
-
 pub(crate) struct App {
   active_tab: usize,
   client: Client,
-  event_rx: UnboundedReceiver<AppEvent>,
-  event_tx: UnboundedSender<AppEvent>,
+  event_rx: UnboundedReceiver<Event>,
+  event_tx: UnboundedSender<Event>,
   handle: Handle,
   list_height: usize,
   message: String,
@@ -76,6 +12,7 @@ pub(crate) struct App {
   mode: Mode,
   next_request_id: u64,
   pending_comment: Option<PendingComment>,
+  pending_effects: Vec<Effect>,
   pending_selections: Vec<Option<usize>>,
   show_help: bool,
   tab_loading: Vec<bool>,
@@ -90,6 +27,14 @@ impl App {
     if !self.show_help {
       self.message = DEFAULT_STATUS.into();
     }
+  }
+
+  fn enqueue_effect(&mut self, effect: Effect) {
+    self.pending_effects.push(effect);
+  }
+
+  fn take_pending_effects(&mut self) -> Vec<Effect> {
+    std::mem::take(&mut self.pending_effects)
   }
 
   fn comment_list_item(entry: &CommentEntry, available_width: u16) -> ListItem {
@@ -117,7 +62,6 @@ impl App {
     let mut lines = vec![Line::from(header)];
 
     if !entry.body().is_empty() {
-      // Keep body text aligned with the toggle/indent instead of additional padding.
       let body_indent = indent.clone();
       let prefix_width = body_indent.chars().count();
 
@@ -310,11 +254,11 @@ impl App {
     Ok(())
   }
 
-  fn handle_help_key(key: KeyEvent) -> Action {
+  fn handle_help_key(key: KeyEvent) -> Command {
     match key.code {
-      KeyCode::Char('?') | KeyCode::Esc => Action::HideHelp,
-      KeyCode::Char('q' | 'Q') => Action::Quit,
-      _ => Action::None,
+      KeyCode::Char('?') | KeyCode::Esc => Command::HideHelp,
+      KeyCode::Char('q' | 'Q') => Command::Quit,
+      _ => Command::None,
     }
   }
 
@@ -335,6 +279,7 @@ impl App {
 
     let desired_width =
       saturating_usize_to_u16(max_line_width.saturating_add(2)).max(1);
+
     let desired_height =
       saturating_usize_to_u16(line_count.saturating_add(2)).max(1);
 
@@ -394,8 +339,7 @@ impl App {
     client: Client,
     tabs: Vec<(Tab, ListView<ListEntry>)>,
   ) -> Self {
-    let mut tab_views: Vec<Option<ListView<ListEntry>>> = Vec::new();
-    let mut tab_meta = Vec::new();
+    let (mut tab_views, mut tab_meta) = (Vec::new(), Vec::new());
 
     for (tab, view) in tabs {
       tab_meta.push(tab);
@@ -408,7 +352,9 @@ impl App {
       .unwrap_or_default();
 
     let (event_tx, event_rx) = mpsc::unbounded_channel();
+
     let tab_count = tab_meta.len();
+
     let tab_loading = vec![false; tab_count];
     let pending_selections = vec![None; tab_count];
 
@@ -424,6 +370,7 @@ impl App {
       mode: Mode::List(initial_view),
       next_request_id: 0,
       pending_comment: None,
+      pending_effects: Vec::new(),
       pending_selections,
       show_help: false,
       tab_loading,
@@ -434,16 +381,9 @@ impl App {
 
   fn open_comment_link(&mut self) {
     if let Mode::Comments(view) = &self.mode {
-      let link = view.link().to_string();
-
-      match webbrowser::open(&link) {
-        Ok(()) => {
-          self.message = format!("Opened in browser: {}", truncate(&link, 80));
-        }
-        Err(error) => {
-          self.message = format!("Could not open link: {error}");
-        }
-      }
+      self.enqueue_effect(Effect::OpenUrl {
+        url: view.link().to_string(),
+      });
     }
   }
 
@@ -482,14 +422,9 @@ impl App {
       request_id,
     });
 
-    let client = self.client.clone();
-    let sender = self.event_tx.clone();
-    let handle = self.handle.clone();
-
-    handle.spawn(async move {
-      let result = client.fetch_thread(id).await;
-
-      let _ = sender.send(AppEvent::CommentsLoaded { request_id, result });
+    self.enqueue_effect(Effect::FetchComments {
+      item_id: id,
+      request_id,
     });
 
     Ok(())
@@ -497,14 +432,9 @@ impl App {
 
   fn open_current_in_browser(&mut self) {
     if let Some(entry) = self.current_entry() {
-      match entry.open() {
-        Ok(link) => {
-          self.message = format!("Opened in browser: {}", truncate(&link, 80));
-        }
-        Err(error) => {
-          self.message = format!("Could not open selection: {error}");
-        }
-      }
+      self.enqueue_effect(Effect::OpenUrl {
+        url: entry.resolved_url(),
+      });
     }
   }
 
@@ -544,69 +474,90 @@ impl App {
     self.select_index(current.saturating_sub(jump))
   }
 
-  fn perform_action(&mut self, action: Action) -> Result<bool> {
-    match action {
-      Action::Quit => Ok(true),
-      Action::ShowHelp => {
-        self.show_help();
-        Ok(false)
+  fn dispatch_command(&mut self, command: Command) -> Result<CommandDispatch> {
+    debug_assert!(
+      self.pending_effects.is_empty(),
+      "command dispatch should start without pending effects"
+    );
+
+    let mut should_exit = false;
+
+    match command {
+      Command::Quit => {
+        should_exit = true;
       }
-      Action::HideHelp => {
-        self.hide_help();
-        Ok(false)
+      Command::ShowHelp => self.show_help(),
+      Command::HideHelp => self.hide_help(),
+      Command::SwitchTabLeft => self.switch_tab_left(),
+      Command::SwitchTabRight => self.switch_tab_right(),
+      Command::SelectNext => self.select_next()?,
+      Command::SelectPrevious => self.select_previous()?,
+      Command::PageDown => self.page_down()?,
+      Command::PageUp => self.page_up()?,
+      Command::SelectFirst => self.select_index(0)?,
+      Command::OpenComments => self.open_comments()?,
+      Command::OpenCurrentInBrowser => self.open_current_in_browser(),
+      Command::OpenCommentLink => self.open_comment_link(),
+      Command::CloseComments => self.close_comments(),
+      Command::None => {}
+    }
+
+    Ok(CommandDispatch {
+      effects: self.take_pending_effects(),
+      should_exit,
+    })
+  }
+
+  fn execute_effect(&mut self, effect: Effect) {
+    match effect {
+      Effect::FetchComments {
+        item_id,
+        request_id,
+      } => {
+        let (client, sender) = (self.client.clone(), self.event_tx.clone());
+
+        let handle = self.handle.clone();
+
+        handle.spawn(async move {
+          let _ = sender.send(Event::CommentsLoaded {
+            request_id,
+            result: client.fetch_thread(item_id).await,
+          });
+        });
       }
-      Action::SwitchTabLeft => {
-        self.switch_tab_left();
-        Ok(false)
+      Effect::FetchTabItems {
+        tab_index,
+        category,
+        offset,
+      } => {
+        let (client, sender) = (self.client.clone(), self.event_tx.clone());
+
+        let handle = self.handle.clone();
+
+        handle.spawn(async move {
+          let _ = sender.send(Event::TabItemsLoaded {
+            tab_index,
+            result: client
+              .fetch_category_items(category, offset, INITIAL_BATCH_SIZE)
+              .await,
+          });
+        });
       }
-      Action::SwitchTabRight => {
-        self.switch_tab_right();
-        Ok(false)
-      }
-      Action::SelectNext => {
-        self.select_next()?;
-        Ok(false)
-      }
-      Action::SelectPrevious => {
-        self.select_previous()?;
-        Ok(false)
-      }
-      Action::PageDown => {
-        self.page_down()?;
-        Ok(false)
-      }
-      Action::PageUp => {
-        self.page_up()?;
-        Ok(false)
-      }
-      Action::SelectFirst => {
-        self.select_index(0)?;
-        Ok(false)
-      }
-      Action::OpenComments => {
-        self.open_comments()?;
-        Ok(false)
-      }
-      Action::OpenCurrentInBrowser => {
-        self.open_current_in_browser();
-        Ok(false)
-      }
-      Action::OpenCommentLink => {
-        self.open_comment_link();
-        Ok(false)
-      }
-      Action::CloseComments => {
-        self.close_comments();
-        Ok(false)
-      }
-      Action::None => Ok(false),
+      Effect::OpenUrl { url } => match webbrowser::open(&url) {
+        Ok(()) => {
+          self.message = format!("Opened in browser: {}", truncate(&url, 80));
+        }
+        Err(error) => {
+          self.message = format!("Could not open link: {error}");
+        }
+      },
     }
   }
 
   fn process_pending_events(&mut self) {
     loop {
       match self.event_rx.try_recv() {
-        Ok(AppEvent::TabItemsLoaded { tab_index, result }) => {
+        Ok(Event::TabItemsLoaded { tab_index, result }) => {
           if let Some(flag) = self.tab_loading.get_mut(tab_index) {
             *flag = false;
           }
@@ -647,7 +598,7 @@ impl App {
             }
           }
         }
-        Ok(AppEvent::CommentsLoaded { request_id, result }) => {
+        Ok(Event::CommentsLoaded { request_id, result }) => {
           let is_current = self
             .pending_comment
             .as_ref()
@@ -706,12 +657,12 @@ impl App {
 
       terminal.draw(|frame| self.draw(frame))?;
 
-      if !event::poll(Duration::from_millis(200))? {
+      if !crossterm_event::poll(Duration::from_millis(200))? {
         self.process_pending_events();
         continue;
       }
 
-      let Event::Key(key) = event::read()? else {
+      let CrosstermEvent::Key(key) = crossterm_event::read()? else {
         self.process_pending_events();
         continue;
       };
@@ -721,18 +672,26 @@ impl App {
         continue;
       }
 
-      let action = if self.show_help {
+      let command = if self.show_help {
         Self::handle_help_key(key)
       } else {
         self.mode.handle_key(key, self.list_height.max(1))
       };
 
-      match self.perform_action(action) {
-        Ok(true) => break,
-        Ok(false) => {
+      match self.dispatch_command(command) {
+        Ok(dispatch) => {
+          for effect in dispatch.effects {
+            self.execute_effect(effect);
+          }
+
+          if dispatch.should_exit {
+            break;
+          }
+
           self.process_pending_events();
         }
         Err(error) => {
+          self.pending_effects.clear();
           self.message = format!("error: {error}");
           self.process_pending_events();
         }
@@ -827,16 +786,10 @@ impl App {
       self.message = LOADING_STATUS.into();
     }
 
-    let client = self.client.clone();
-    let sender = self.event_tx.clone();
-    let handle = self.handle.clone();
-
-    handle.spawn(async move {
-      let result = client
-        .fetch_category_items(category, offset, INITIAL_BATCH_SIZE)
-        .await;
-
-      let _ = sender.send(AppEvent::TabItemsLoaded { tab_index, result });
+    self.enqueue_effect(Effect::FetchTabItems {
+      tab_index,
+      category,
+      offset,
     });
 
     Ok(())

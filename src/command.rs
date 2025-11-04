@@ -1,5 +1,5 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Action {
+pub(crate) enum Command {
   CloseComments,
   HideHelp,
   None,
