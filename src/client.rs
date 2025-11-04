@@ -21,6 +21,8 @@ impl Client {
 
   const ITEM_URL: &str = "https://hacker-news.firebaseio.com/v0/item";
 
+  const SEARCH_URL: &str = "https://hn.algolia.com/api/v1/search";
+
   async fn build_comment_from_item(&self, item: Item) -> Result<Comment> {
     let children = self
       .fetch_comment_children(item.kids.clone().unwrap_or_default())
@@ -60,6 +62,7 @@ impl Client {
         .map(ListEntry::from)
         .collect(),
       CategoryKind::Comments => self.fetch_comments(offset, count).await?,
+      CategoryKind::Search => Vec::new(),
     })
   }
 
@@ -236,5 +239,38 @@ impl Client {
       .collect::<Result<Vec<_>>>()?;
 
     Ok(tabs)
+  }
+
+  pub(crate) async fn search_stories(
+    &self,
+    query: &str,
+    page: usize,
+    hits_per_page: usize,
+  ) -> Result<(Vec<ListEntry>, bool)> {
+    let hits_per_page = hits_per_page.max(1);
+
+    let mut url = reqwest::Url::parse(Self::SEARCH_URL)?;
+
+    {
+      let mut params = url.query_pairs_mut();
+      params.append_pair("query", query);
+      params.append_pair("tags", "story");
+      params.append_pair("hitsPerPage", &hits_per_page.to_string());
+      params.append_pair("page", &page.to_string());
+    }
+
+    let response = self
+      .client
+      .get(url)
+      .send()
+      .await?
+      .json::<SearchResponse>()
+      .await?;
+
+    let has_more = response.page + 1 < response.nb_pages;
+
+    let entries = response.hits.into_iter().map(ListEntry::from).collect();
+
+    Ok((entries, has_more))
   }
 }

@@ -1,5 +1,6 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Command {
+  CancelSearch,
   CloseComments,
   HideHelp,
   None,
@@ -13,6 +14,8 @@ pub(crate) enum Command {
   SelectNext,
   SelectPrevious,
   ShowHelp,
+  StartSearch,
+  SubmitSearch,
   SwitchTabLeft,
   SwitchTabRight,
 }

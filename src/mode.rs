@@ -26,6 +26,7 @@ impl Mode {
           KeyCode::Char('u') if modifiers.contains(KeyModifiers::CONTROL) => {
             Command::PageUp
           }
+          KeyCode::Char('/') => Command::StartSearch,
           KeyCode::Home => Command::SelectFirst,
           KeyCode::End => {
             if !view.is_empty() {
@@ -72,6 +73,7 @@ impl Mode {
             view.page_up(page);
             Command::None
           }
+          KeyCode::Char('/') => Command::StartSearch,
           KeyCode::Left | KeyCode::Char('h') => {
             view.collapse_selected();
             Command::None

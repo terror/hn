@@ -64,6 +64,28 @@ impl From<Story> for ListEntry {
   }
 }
 
+impl From<SearchHit> for ListEntry {
+  fn from(hit: SearchHit) -> Self {
+    let detail = match (hit.points, hit.author.as_deref()) {
+      (Some(points), Some(author)) => {
+        Some(format!("{} by {}", format_points(points), author))
+      }
+      (Some(points), None) => Some(format_points(points)),
+      (None, Some(author)) => Some(format!("by {author}")),
+      _ => None,
+    };
+
+    let title = hit.title.unwrap_or_else(|| "Untitled".to_string());
+
+    Self {
+      detail,
+      id: hit.object_id,
+      title,
+      url: hit.url,
+    }
+  }
+}
+
 impl ListEntry {
   pub(crate) fn resolved_url(&self) -> String {
     self
