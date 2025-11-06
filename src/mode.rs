@@ -106,6 +106,15 @@ impl Mode {
       }
     }
   }
+
+  pub(crate) fn set_offset(&mut self, offset: usize) {
+    match self {
+      Mode::List(view) => view.set_offset(offset),
+      Mode::Comments(view) => {
+        view.offset = offset;
+      }
+    }
+  }
 }
 
 #[cfg(test)]

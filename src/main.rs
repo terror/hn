@@ -22,6 +22,7 @@ mod pending_search;
 mod search_hit;
 mod search_input;
 mod search_response;
+mod state;
 mod story;
 mod tab;
 mod transient_message;
@@ -84,6 +85,7 @@ use {
     de::{self, Unexpected},
   },
   serde_json::Value,
+  state::State,
   std::{
     backtrace::BacktraceStatus,
     collections::HashSet,
@@ -98,9 +100,7 @@ use {
   tab::Tab,
   tokio::{
     runtime::Handle,
-    sync::mpsc::{
-      self, UnboundedReceiver, UnboundedSender, error::TryRecvError,
-    },
+    sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
   },
   transient_message::TransientMessage,
   utils::{deserialize_optional_string, format_points, truncate, wrap_text},
