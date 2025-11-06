@@ -188,11 +188,8 @@ impl Client {
       return Ok(CommentThread {
         focus: Some(comment.id),
         roots: vec![comment],
-        url: None,
       });
     }
-
-    let url = item.url.clone();
 
     let roots = self
       .fetch_comment_children(item.kids.clone().unwrap_or_default())
@@ -201,7 +198,6 @@ impl Client {
     Ok(CommentThread {
       focus: None,
       roots,
-      url,
     })
   }
 

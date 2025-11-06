@@ -81,6 +81,13 @@ impl CommentView {
     &self.link
   }
 
+  pub(crate) fn selected_comment_link(&self) -> Option<String> {
+    self
+      .selected
+      .and_then(|idx| self.entries.get(idx))
+      .map(CommentEntry::permalink)
+  }
+
   pub(crate) fn move_by(&mut self, delta: isize) {
     let (visible, selected_pos) = self.visible_with_selection();
 
@@ -107,10 +114,8 @@ impl CommentView {
     self.selected = Some(visible[target]);
   }
 
-  pub(crate) fn new(thread: CommentThread, fallback_link: String) -> Self {
-    let CommentThread {
-      focus, roots, url, ..
-    } = thread;
+  pub(crate) fn new(thread: CommentThread, comment_link: String) -> Self {
+    let CommentThread { focus, roots } = thread;
 
     let mut entries = Vec::new();
     let mut selected = None;
@@ -125,7 +130,7 @@ impl CommentView {
 
     Self {
       entries,
-      link: url.unwrap_or(fallback_link),
+      link: comment_link,
       offset: 0,
       selected,
     }
@@ -294,6 +299,9 @@ impl CommentView {
 mod tests {
   use super::*;
 
+  const ROOT_COMMENT_LINK: &str = "https://news.ycombinator.com/item?id=1";
+  const CHILD_COMMENT_LINK: &str = "https://news.ycombinator.com/item?id=2";
+
   fn make_comment(id: u64, children: Vec<Comment>) -> Comment {
     Comment {
       author: Some(format!("user{id}")),
@@ -314,9 +322,8 @@ mod tests {
       CommentThread {
         focus,
         roots: vec![parent],
-        url: None,
       },
-      "fallback".to_string(),
+      ROOT_COMMENT_LINK.to_string(),
     )
   }
 
@@ -324,7 +331,23 @@ mod tests {
   fn new_selects_focused_comment_when_present() {
     let view = make_view(Some(2));
     assert_eq!(view.selected, Some(1));
-    assert_eq!(view.link(), "fallback");
+    assert_eq!(view.link(), ROOT_COMMENT_LINK);
+  }
+
+  #[test]
+  fn selected_comment_link_returns_selected_comment_permalink() {
+    let mut view = make_view(None);
+    assert_eq!(
+      view.selected_comment_link().as_deref(),
+      Some(ROOT_COMMENT_LINK)
+    );
+
+    view.select_index_at(1);
+
+    assert_eq!(
+      view.selected_comment_link().as_deref(),
+      Some(CHILD_COMMENT_LINK)
+    );
   }
 
   #[test]

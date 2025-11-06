@@ -17,6 +17,10 @@ impl CommentEntry {
     self.body.as_str()
   }
 
+  pub(crate) fn permalink(&self) -> String {
+    format!("https://news.ycombinator.com/item?id={}", self.id)
+  }
+
   pub(crate) fn has_children(&self) -> bool {
     !self.children.is_empty()
   }
@@ -66,7 +70,7 @@ impl CommentEntry {
       detail,
       id: self.id.to_string(),
       title,
-      url: Some(format!("https://news.ycombinator.com/item?id={}", self.id)),
+      url: Some(self.permalink()),
     }
   }
 }
