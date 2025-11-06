@@ -17,10 +17,6 @@ impl CommentEntry {
     self.body.as_str()
   }
 
-  pub(crate) fn permalink(&self) -> String {
-    format!("https://news.ycombinator.com/item?id={}", self.id)
-  }
-
   pub(crate) fn has_children(&self) -> bool {
     !self.children.is_empty()
   }
@@ -33,6 +29,10 @@ impl CommentEntry {
       (_, true) => format!("{author} (dead)"),
       _ => author.to_string(),
     }
+  }
+
+  pub(crate) fn permalink(&self) -> String {
+    format!("https://news.ycombinator.com/item?id={}", self.id)
   }
 
   pub(crate) fn to_bookmark_entry(&self) -> ListEntry {

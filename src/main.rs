@@ -110,7 +110,7 @@ const INITIAL_BATCH_SIZE: usize = 30;
 
 const LIST_STATUS: &str = "↑/k up • ↓/j down • enter comments • o open link • b bookmark • q/esc quit • ? help";
 
-const COMMENTS_STATUS: &str = "↑/k up • ↓/j down • ←/h collapse • →/l expand • enter toggle • b bookmark • esc back";
+const COMMENTS_STATUS: &str = "↑/k up • ↓/j down • ←/h collapse • →/l expand • enter toggle • o open comment • b bookmark • esc back";
 
 const HELP_TITLE: &str = "Help";
 const HELP_STATUS: &str = "Press ? or esc to close help";
@@ -152,6 +152,7 @@ Comments:
   ← / h   collapse or go to parent
   → / l   expand or go to first child
   enter   toggle collapse or expand
+  o       open the selected comment in your browser
   b       toggle a bookmark for the selected comment
   esc     return to the story list
 ";

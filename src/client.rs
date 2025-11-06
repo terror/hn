@@ -195,10 +195,7 @@ impl Client {
       .fetch_comment_children(item.kids.clone().unwrap_or_default())
       .await?;
 
-    Ok(CommentThread {
-      focus: None,
-      roots,
-    })
+    Ok(CommentThread { focus: None, roots })
   }
 
   pub(crate) async fn load_tabs(

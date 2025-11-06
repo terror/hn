@@ -1036,7 +1036,9 @@ mod tests {
     assert_eq!(state.pending_effects.len(), 1);
 
     match &state.pending_effects[0] {
-      Effect::OpenUrl { url } => assert_eq!(url, "https://news.ycombinator.com/item?id=123"),
+      Effect::OpenUrl { url } => {
+        assert_eq!(url, "https://news.ycombinator.com/item?id=123");
+      }
       _ => panic!("unexpected effect variant"),
     }
   }
