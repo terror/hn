@@ -11,5 +11,6 @@ pub(crate) struct Item {
   #[allow(dead_code)]
   pub(crate) title: Option<String>,
   pub(crate) r#type: Option<String>,
+  #[allow(dead_code)]
   pub(crate) url: Option<String>,
 }

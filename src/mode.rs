@@ -154,9 +154,8 @@ mod tests {
           id: 1,
           text: Some("body".to_string()),
         }],
-        url: None,
       },
-      "fallback".to_string(),
+      "https://news.ycombinator.com/item?id=1".to_string(),
     ))
   }
 

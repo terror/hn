@@ -31,6 +31,10 @@ impl CommentEntry {
     }
   }
 
+  pub(crate) fn permalink(&self) -> String {
+    format!("https://news.ycombinator.com/item?id={}", self.id)
+  }
+
   pub(crate) fn to_bookmark_entry(&self) -> ListEntry {
     let author = self.author.as_deref().unwrap_or("unknown");
     let title = format!("Comment by {author}");
@@ -66,7 +70,7 @@ impl CommentEntry {
       detail,
       id: self.id.to_string(),
       title,
-      url: Some(format!("https://news.ycombinator.com/item?id={}", self.id)),
+      url: Some(self.permalink()),
     }
   }
 }

@@ -286,7 +286,7 @@ impl State {
 
         match result {
           Ok(thread) => {
-            let view = CommentView::new(thread, pending.fallback_link);
+            let view = CommentView::new(thread, pending.comment_link);
 
             self.store_active_list_view();
 
@@ -448,7 +448,9 @@ impl State {
   fn open_comment_link(&mut self) {
     if let Mode::Comments(view) = &self.mode {
       self.pending_effects.push(Effect::OpenUrl {
-        url: view.link().to_string(),
+        url: view
+          .selected_comment_link()
+          .unwrap_or_else(|| view.link().to_string()),
       });
     }
   }
@@ -459,7 +461,6 @@ impl State {
     };
 
     let entry_id = entry.id.clone();
-    let entry_url = entry.url.clone();
 
     let id = match entry_id.parse::<u64>() {
       Ok(id) => id,
@@ -473,18 +474,15 @@ impl State {
       self.message = LOADING_COMMENTS_STATUS.into();
     }
 
-    let fallback_link = entry_url
-      .filter(|value| !value.is_empty())
-      .unwrap_or_else(|| {
-        format!("https://news.ycombinator.com/item?id={entry_id}")
-      });
+    let comment_link =
+      format!("https://news.ycombinator.com/item?id={entry_id}");
 
     let request_id = self.next_request_id;
 
     self.next_request_id = self.next_request_id.wrapping_add(1);
 
     self.pending_comment = Some(PendingComment {
-      fallback_link,
+      comment_link,
       request_id,
     });
 
@@ -1010,6 +1008,39 @@ mod tests {
     }
 
     assert_eq!(state.message, LOADING_COMMENTS_STATUS);
+  }
+
+  #[test]
+  fn open_comment_link_opens_selected_comment() {
+    let mut state = sample_state_with_entry();
+
+    let comment_view = CommentView::new(
+      CommentThread {
+        focus: None,
+        roots: vec![Comment {
+          author: Some("user".to_string()),
+          children: Vec::new(),
+          dead: false,
+          deleted: false,
+          id: 123,
+          text: Some("body".to_string()),
+        }],
+      },
+      "https://news.ycombinator.com/item?id=42".to_string(),
+    );
+
+    state.mode = Mode::Comments(comment_view);
+
+    state.open_comment_link();
+
+    assert_eq!(state.pending_effects.len(), 1);
+
+    match &state.pending_effects[0] {
+      Effect::OpenUrl { url } => {
+        assert_eq!(url, "https://news.ycombinator.com/item?id=123");
+      }
+      _ => panic!("unexpected effect variant"),
+    }
   }
 
   #[test]
