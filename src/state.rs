@@ -447,11 +447,11 @@ impl State {
 
   fn open_comment_link(&mut self) {
     if let Mode::Comments(view) = &self.mode {
-      let url = view
-        .selected_comment_link()
-        .unwrap_or_else(|| view.link().to_string());
-
-      self.pending_effects.push(Effect::OpenUrl { url });
+      self.pending_effects.push(Effect::OpenUrl {
+        url: view
+          .selected_comment_link()
+          .unwrap_or_else(|| view.link().to_string()),
+      });
     }
   }
 
