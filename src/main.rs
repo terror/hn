@@ -1,33 +1,3 @@
-mod app;
-mod bookmark;
-mod category;
-mod client;
-mod command;
-mod command_dispatch;
-mod comment;
-mod comment_entry;
-mod comment_hit;
-mod comment_response;
-mod comment_thread;
-mod comment_view;
-mod effect;
-mod event;
-mod help_view;
-mod item;
-mod list_entry;
-mod list_view;
-mod mode;
-mod pending_comment;
-mod pending_search;
-mod search_hit;
-mod search_input;
-mod search_response;
-mod state;
-mod story;
-mod tab;
-mod transient_message;
-mod utils;
-
 use {
   anyhow::Context,
   app::App,
@@ -105,6 +75,36 @@ use {
   transient_message::TransientMessage,
   utils::{deserialize_optional_string, format_points, truncate, wrap_text},
 };
+
+mod app;
+mod bookmark;
+mod category;
+mod client;
+mod command;
+mod command_dispatch;
+mod comment;
+mod comment_entry;
+mod comment_hit;
+mod comment_response;
+mod comment_thread;
+mod comment_view;
+mod effect;
+mod event;
+mod help_view;
+mod item;
+mod list_entry;
+mod list_view;
+mod mode;
+mod pending_comment;
+mod pending_search;
+mod search_hit;
+mod search_input;
+mod search_response;
+mod state;
+mod story;
+mod tab;
+mod transient_message;
+mod utils;
 
 const INITIAL_BATCH_SIZE: usize = 30;
 
